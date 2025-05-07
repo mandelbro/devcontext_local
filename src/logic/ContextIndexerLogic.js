@@ -979,8 +979,8 @@ export async function indexCodeFile(filePath, fileContent, languageHint) {
       await executeQuery(
         `
         INSERT INTO code_entities (
-          entity_id, file_path, entity_type, name, content_hash, raw_content, language, created_at, last_modified_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+          entity_id, file_path, entity_type, name, content_hash, raw_content, language
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
       `,
         [
           fileEntityId,
@@ -1034,9 +1034,8 @@ export async function indexCodeFile(filePath, fileContent, languageHint) {
         `
         INSERT INTO code_entities (
           entity_id, parent_entity_id, file_path, entity_type, name, 
-          start_line, end_line, raw_content, language, custom_metadata,
-          created_at, last_modified_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+          start_line, end_line, raw_content, language, custom_metadata
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
         [
           entityId,

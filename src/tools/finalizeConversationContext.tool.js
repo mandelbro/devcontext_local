@@ -11,12 +11,13 @@ import { executeQuery } from "../db.js";
 import * as ConversationIntelligence from "../logic/ConversationIntelligence.js";
 import * as TimelineManagerLogic from "../logic/TimelineManagerLogic.js";
 import * as ActiveContextManager from "../logic/ActiveContextManager.js";
-import * as LearningSystem from "../logic/LearningSystem.js";
+import * as LearningSystems from "../logic/LearningSystems.js";
 import * as GlobalPatternRepository from "../logic/GlobalPatternRepository.js";
 import * as SmartSearchServiceLogic from "../logic/SmartSearchServiceLogic.js";
 import * as ContextCompressorLogic from "../logic/ContextCompressorLogic.js";
 import * as TextTokenizerLogic from "../logic/TextTokenizerLogic.js";
 import { logMessage } from "../utils/logger.js";
+import { v4 as uuidv4 } from "uuid";
 
 import {
   finalizeConversationContextInputSchema,
@@ -304,6 +305,62 @@ async function handler(input, sdkContext) {
       }
     }
 
+    // Mark all active conversation purposes as ended
+    try {
+      const currentTime = new Date().toISOString();
+      const updatePurposeQuery = `
+        UPDATE conversation_purposes
+        SET end_timestamp = ?
+        WHERE conversation_id = ? AND end_timestamp IS NULL
+      `;
+      await executeQuery(updatePurposeQuery, [currentTime, conversationId]);
+      logMessage("INFO", `Marked all active conversation purposes as ended`);
+
+      // Check if we have any purpose records at all for this conversation
+      const checkPurposeQuery = `
+        SELECT COUNT(*) as count FROM conversation_purposes 
+        WHERE conversation_id = ?
+      `;
+      const purposeCount = await executeQuery(checkPurposeQuery, [
+        conversationId,
+      ]);
+      const hasAnyPurpose = purposeCount?.rows?.[0]?.count > 0;
+
+      // If no purpose exists, create a general_query purpose that's already ended
+      if (!hasAnyPurpose) {
+        const purposeId = uuidv4();
+        const startTime = new Date(Date.now() - 60000).toISOString(); // 1 minute ago
+
+        const insertPurposeQuery = `
+          INSERT INTO conversation_purposes (
+            purpose_id, conversation_id, purpose_type, confidence,
+            start_timestamp, end_timestamp, metadata
+          ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        `;
+
+        await executeQuery(insertPurposeQuery, [
+          purposeId,
+          conversationId,
+          "general_query",
+          0.8,
+          startTime,
+          currentTime,
+          JSON.stringify({ source: "finalization", outcome }),
+        ]);
+
+        logMessage(
+          "INFO",
+          `Created general_query purpose record for finalization`
+        );
+      }
+    } catch (purposeErr) {
+      logMessage("WARN", `Failed to finalize conversation purposes`, {
+        error: purposeErr.message,
+        conversationId,
+      });
+      // Continue despite purpose update error
+    }
+
     // 11. Return the finalized conversation data
     logMessage(
       "INFO",
@@ -365,181 +422,92 @@ async function handler(input, sdkContext) {
 }
 
 /**
- * Extracts learnings from a conversation using various analysis techniques
+ * Extracts learnings from a conversation history - patterns, bugs, etc.
  *
- * @param {string} conversationId - The ID of the conversation
- * @param {Array} conversationHistory - The conversation message history
- * @returns {Promise<Object>} Extracted learnings with metadata
- * @private
+ * @param {string} conversationId - Conversation ID
+ * @param {boolean} extractPatterns - Whether to extract code patterns
+ * @param {boolean} promotePatterns - Whether to promote high-quality patterns to global
+ * @returns {Promise<{patternCount: number, bugPatternCount: number}>} Counts of extracted items
  */
 async function _extractConversationLearnings(
   conversationId,
-  conversationHistory
+  extractPatterns = true,
+  promotePatterns = false
 ) {
   try {
-    logMessage(
-      "DEBUG",
-      `Extracting learnings from conversation ${conversationId}`,
-      {
-        messageCount: conversationHistory.length,
+    logMessage("INFO", "Extracting learnings from conversation");
+
+    let patternCount = 0;
+    let bugPatternCount = 0;
+
+    // 1. Extract code patterns if requested
+    if (extractPatterns) {
+      try {
+        const extractedPatterns =
+          await LearningSystems.extractPatternsFromConversation(conversationId);
+        if (extractedPatterns && extractedPatterns.length > 0) {
+          patternCount = extractedPatterns.length;
+
+          // Store patterns
+          // TODO: Add storage logic here
+
+          // Promote patterns if requested
+          if (promotePatterns && extractedPatterns.length > 0) {
+            // TODO: Add promotion logic here
+          }
+        }
+      } catch (error) {
+        logMessage("WARN", `Failed to extract patterns: ${error.message}`);
       }
+    }
+
+    // 2. Extract bug patterns (always do this)
+    try {
+      const bugPatterns =
+        await LearningSystems.extractBugPatternsFromConversation(
+          conversationId
+        );
+      if (bugPatterns && bugPatterns.length > 0) {
+        bugPatternCount = bugPatterns.length;
+
+        // Store bug patterns
+        // TODO: Add storage logic here
+      }
+    } catch (error) {
+      logMessage("WARN", `Failed to extract bug patterns: ${error.message}`);
+    }
+
+    // 3. Extract key-value pairs for potential knowledge base entries
+    try {
+      const keyValuePairs = await LearningSystems.extractKeyValuePairs(
+        conversationId
+      );
+      if (keyValuePairs && keyValuePairs.length > 0) {
+        // Store key-value pairs
+        // TODO: Add storage logic here
+      }
+    } catch (error) {
+      logMessage("WARN", `Failed to extract key-value pairs: ${error.message}`);
+    }
+
+    logMessage(
+      "INFO",
+      `Extracted ${patternCount} patterns and ${bugPatternCount} bug patterns`
     );
 
-    // 1. Extract different types of learnings using LearningSystem
-    let patterns = [];
-    let bugPatterns = [];
-    let conceptualInsights = [];
-    let keyValuePairs = [];
-
-    // Extract patterns
-    try {
-      patterns = await LearningSystem.extractPatternsFromConversation(
-        conversationId
-      );
-      logMessage("DEBUG", `Extracted ${patterns.length} patterns`);
-    } catch (patternErr) {
-      logMessage("WARN", `Failed to extract patterns`, {
-        error: patternErr.message,
-      });
-      patterns = [];
-    }
-
-    // Extract bug patterns
-    try {
-      bugPatterns = await LearningSystem.extractBugPatterns(conversationId);
-      logMessage("DEBUG", `Extracted ${bugPatterns.length} bug patterns`);
-    } catch (bugErr) {
-      logMessage("WARN", `Failed to extract bug patterns`, {
-        error: bugErr.message,
-      });
-      bugPatterns = [];
-    }
-
-    // Extract key-value pairs
-    try {
-      keyValuePairs = await LearningSystem.extractKeyValuePairs(
-        conversationHistory
-      );
-      logMessage("DEBUG", `Extracted ${keyValuePairs.length} key-value pairs`);
-    } catch (kvErr) {
-      logMessage("WARN", `Failed to extract key-value pairs`, {
-        error: kvErr.message,
-      });
-      keyValuePairs = [];
-    }
-
-    // Extract conceptual insights using NLP analysis
-    try {
-      const userMessages = conversationHistory.filter(
-        (msg) => msg.role === "user"
-      );
-      const assistantMessages = conversationHistory.filter(
-        (msg) => msg.role === "assistant"
-      );
-
-      // Process only if there are messages
-      if (userMessages.length > 0 && assistantMessages.length > 0) {
-        // Extract key concepts
-        conceptualInsights = await _extractConcepts(
-          userMessages,
-          assistantMessages
-        );
-        logMessage(
-          "DEBUG",
-          `Extracted ${conceptualInsights.length} conceptual insights`
-        );
-      }
-    } catch (conceptErr) {
-      logMessage("WARN", `Failed to extract conceptual insights`, {
-        error: conceptErr.message,
-      });
-      conceptualInsights = [];
-    }
-
-    // 2. Store extracted learnings in the database for future reference
-    try {
-      // Store patterns
-      for (const pattern of patterns) {
-        await LearningSystem.storePattern({
-          patternType: pattern.type,
-          patternContent: pattern.content,
-          context: pattern.context,
-          confidenceScore: pattern.confidence,
-          conversationId,
-          timestamp: Date.now(),
-        });
-      }
-
-      // Store bug patterns
-      for (const bug of bugPatterns) {
-        await LearningSystem.storeBugPattern({
-          symptom: bug.symptom,
-          cause: bug.cause,
-          solution: bug.solution,
-          context: bug.context,
-          confidenceScore: bug.confidence,
-          conversationId,
-          timestamp: Date.now(),
-        });
-      }
-
-      // Store key-value pairs
-      for (const kv of keyValuePairs) {
-        await LearningSystem.storeKeyValuePair({
-          key: kv.key,
-          value: kv.value,
-          context: kv.context,
-          confidenceScore: kv.confidence,
-          conversationId,
-          timestamp: Date.now(),
-        });
-      }
-
-      logMessage("INFO", `Stored extracted learnings in database`);
-    } catch (storeErr) {
-      logMessage("WARN", `Failed to store some extracted learnings`, {
-        error: storeErr.message,
-      });
-      // Continue despite storage issues
-    }
-
-    // 3. Record learning_extraction event in timeline
-    try {
-      await TimelineManagerLogic.recordEvent(
-        "learning_extraction",
-        {
-          patterns: patterns.length,
-          bugPatterns: bugPatterns.length,
-          keyValuePairs: keyValuePairs.length,
-          conceptualInsights: conceptualInsights.length,
-          timestamp: Date.now(),
-        },
-        [], // No specific entities
-        conversationId
-      );
-      logMessage("DEBUG", `Recorded learning_extraction event in timeline`);
-    } catch (timelineErr) {
-      logMessage("WARN", `Failed to record learning_extraction event`, {
-        error: timelineErr.message,
-      });
-      // Continue despite timeline error
-    }
-
-    // 4. Return the extracted learnings
     return {
-      patterns,
-      bugPatterns,
-      keyValuePairs,
-      conceptualInsights,
-      extractionTime: Date.now(),
+      patternCount,
+      bugPatternCount,
     };
   } catch (error) {
-    logMessage("ERROR", `Error extracting conversation learnings`, {
-      error: error.message,
-      stack: error.stack,
-      conversationId,
-    });
-    throw error;
+    logMessage(
+      "ERROR",
+      `Error extracting conversation learnings: ${error.message}`
+    );
+    return {
+      patternCount: 0,
+      bugPatternCount: 0,
+    };
   }
 }
 
@@ -612,6 +580,103 @@ async function _extractConcepts(userMessages, assistantMessages) {
 }
 
 /**
+ * Gets the top terms by frequency from a list of tokens
+ *
+ * @param {Array} tokens - Array of tokens
+ * @param {number} limit - Maximum number of terms to return
+ * @returns {Array} Array of objects containing term and frequency
+ * @private
+ */
+function _getTopTermsByFrequency(tokens, limit = 20) {
+  try {
+    if (!tokens || !Array.isArray(tokens) || tokens.length === 0) {
+      return [];
+    }
+
+    // Count term frequencies
+    const termCounts = {};
+    for (const token of tokens) {
+      if (token && typeof token === "string" && token.length > 2) {
+        // Skip very short tokens
+        const term = token.toLowerCase();
+        termCounts[term] = (termCounts[term] || 0) + 1;
+      }
+    }
+
+    // Convert to array and sort by frequency
+    const sortedTerms = Object.entries(termCounts)
+      .map(([term, frequency]) => ({ term, frequency }))
+      .sort((a, b) => b.frequency - a.frequency);
+
+    // Return top terms
+    return sortedTerms.slice(0, limit);
+  } catch (error) {
+    logMessage("ERROR", `Error getting top terms by frequency`, {
+      error: error.message,
+    });
+    return [];
+  }
+}
+
+/**
+ * Checks if two terms are related
+ *
+ * @param {string} term1 - First term
+ * @param {string} term2 - Second term
+ * @returns {boolean} True if the terms are related
+ * @private
+ */
+function _areTermsRelated(term1, term2) {
+  // Simple relation check - one term contains the other
+  return term1.includes(term2) || term2.includes(term1);
+}
+
+/**
+ * Finds snippets in messages that contain a specific term
+ *
+ * @param {Array} messages - Messages to search
+ * @param {string} term - Term to search for
+ * @returns {Array} Relevant snippets
+ * @private
+ */
+function _findRelevantSnippets(messages, term) {
+  try {
+    if (!messages || !Array.isArray(messages) || messages.length === 0) {
+      return [];
+    }
+
+    const snippets = [];
+    const termRegex = new RegExp(`\\b${term}\\b`, "i");
+
+    for (const message of messages) {
+      if (!message.content) continue;
+
+      // If term found in message
+      if (termRegex.test(message.content)) {
+        // Extract a snippet around the term
+        const sentences = message.content.split(/[.!?]+/);
+        for (const sentence of sentences) {
+          if (termRegex.test(sentence)) {
+            snippets.push({
+              text: sentence.trim(),
+              role: message.role,
+              messageId: message.message_id || message.messageId,
+            });
+          }
+        }
+      }
+    }
+
+    return snippets;
+  } catch (error) {
+    logMessage("WARN", `Error finding relevant snippets`, {
+      error: error.message,
+    });
+    return [];
+  }
+}
+
+/**
  * Promotes patterns from a conversation to the global pattern repository
  *
  * @param {string} conversationId - The ID of the conversation
@@ -626,7 +691,7 @@ async function _promoteConversationPatterns(conversationId, outcome) {
     );
 
     // 1. Extract patterns from the conversation
-    const patterns = await LearningSystem.extractPatternsFromConversation(
+    const patterns = await LearningSystems.extractPatternsFromConversation(
       conversationId
     );
 
@@ -760,11 +825,20 @@ async function _findAndSynthesizeRelatedConversations(
 
     // 1. Extract keywords from conversation topics
     const topicKeywords = new Set();
-    conversationTopics.forEach((topic) => {
-      if (topic.keywords && Array.isArray(topic.keywords)) {
-        topic.keywords.forEach((kw) => topicKeywords.add(kw));
-      }
-    });
+
+    // Ensure conversationTopics is an array before using forEach
+    if (conversationTopics && Array.isArray(conversationTopics)) {
+      conversationTopics.forEach((topic) => {
+        if (topic.keywords && Array.isArray(topic.keywords)) {
+          topic.keywords.forEach((kw) => topicKeywords.add(kw));
+        }
+      });
+    } else {
+      console.warn(
+        `[_findAndSynthesizeRelatedConversations] conversationTopics is not an array:`,
+        typeof conversationTopics
+      );
+    }
 
     const keywordArray = Array.from(topicKeywords);
 
@@ -801,11 +875,20 @@ async function _findAndSynthesizeRelatedConversations(
 
         // Extract keywords from event topics
         const eventKeywords = new Set();
-        eventTopics.forEach((topic) => {
-          if (topic.keywords && Array.isArray(topic.keywords)) {
-            topic.keywords.forEach((kw) => eventKeywords.add(kw));
-          }
-        });
+
+        // Ensure eventTopics is an array before using forEach
+        if (eventTopics && Array.isArray(eventTopics)) {
+          eventTopics.forEach((topic) => {
+            if (topic.keywords && Array.isArray(topic.keywords)) {
+              topic.keywords.forEach((kw) => eventKeywords.add(kw));
+            }
+          });
+        } else {
+          console.warn(
+            `[_findAndSynthesizeRelatedConversations] eventTopics for ${event.conversation_id} is not an array`
+          );
+          continue; // Skip this event if topics aren't available
+        }
 
         // Calculate keyword overlap (Jaccard similarity)
         const overlapCount = keywordArray.filter((kw) =>
@@ -819,18 +902,27 @@ async function _findAndSynthesizeRelatedConversations(
 
         // Find common topics by name
         const commonTopics = [];
-        eventTopics.forEach((eventTopic) => {
-          conversationTopics.forEach((currentTopic) => {
-            if (
-              eventTopic.topic_name &&
-              currentTopic.topic_name &&
-              eventTopic.topic_name.toLowerCase() ===
-                currentTopic.topic_name.toLowerCase()
-            ) {
-              commonTopics.push(eventTopic.topic_name);
-            }
+
+        // Make sure both are arrays before finding common topics
+        if (
+          eventTopics &&
+          Array.isArray(eventTopics) &&
+          conversationTopics &&
+          Array.isArray(conversationTopics)
+        ) {
+          eventTopics.forEach((eventTopic) => {
+            conversationTopics.forEach((currentTopic) => {
+              if (
+                eventTopic.topic_name &&
+                currentTopic.topic_name &&
+                eventTopic.topic_name.toLowerCase() ===
+                  currentTopic.topic_name.toLowerCase()
+              ) {
+                commonTopics.push(eventTopic.topic_name);
+              }
+            });
           });
-        });
+        }
 
         // Only consider conversations with some similarity
         if (similarityScore > 0.2 || commonTopics.length > 0) {
@@ -1022,8 +1114,14 @@ async function _generateNextStepSuggestions(
     let followUpTopics = [];
 
     if (purposeType) {
+      // Convert purposeType to lowercase string for safer comparison
+      const purposeTypeLower =
+        typeof purposeType === "string"
+          ? purposeType.toLowerCase()
+          : "general_query";
+
       // Different next steps based on conversation purpose
-      switch (purposeType.toLowerCase()) {
+      switch (purposeTypeLower) {
         case "debugging":
         case "bug_fixing":
           nextSteps.push({
@@ -1131,26 +1229,39 @@ async function _generateNextStepSuggestions(
     }
 
     // 3. Search for reference materials based on keywords
-    const referenceResults = await SmartSearchServiceLogic.searchByKeywords(
-      keywords,
-      {
-        fileTypes: ["md", "txt", "rst", "pdf", "doc"],
-        maxResults: 5,
-        searchDocumentation: true,
-      }
-    );
+    try {
+      // Only proceed with search if keywords are valid strings
+      const validKeywords = Array.isArray(keywords)
+        ? keywords.filter((kw) => typeof kw === "string")
+        : [];
 
-    const referenceMaterials = referenceResults.map((result) => ({
-      title: result.name || result.file_path || "Unnamed reference",
-      path: result.file_path,
-      type: result.entity_type || "document",
-      relevance: result.score || 0.5,
-    }));
+      if (validKeywords.length > 0) {
+        const referenceResults = await SmartSearchServiceLogic.searchByKeywords(
+          validKeywords,
+          {
+            fileTypes: ["md", "txt", "rst", "pdf", "doc"],
+            maxResults: 5,
+            searchDocumentation: true,
+          }
+        );
+
+        const referenceMaterials = referenceResults.map((result) => ({
+          title: result.name || result.file_path || "Unnamed reference",
+          path: result.file_path,
+          type: result.entity_type || "document",
+          relevance: result.score || 0.5,
+        }));
+
+        result.referenceMaterials = referenceMaterials;
+      }
+    } catch (error) {
+      console.error(`Error in searchByKeywords:`, error);
+      // Continue with empty reference materials
+    }
 
     // 4. Combine all results
     result.suggestedNextSteps = nextSteps;
     result.followUpTopics = followUpTopics;
-    result.referenceMaterials = referenceMaterials;
 
     console.log(
       `[_generateNextStepSuggestions] Generated ${nextSteps.length} next steps and ${followUpTopics.length} follow-up topics`

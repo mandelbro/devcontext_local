@@ -17,6 +17,7 @@ import * as ConversationSegmenter from "../logic/ConversationSegmenter.js";
 import * as ConversationPurposeDetector from "../logic/ConversationPurposeDetector.js";
 import * as ContextCompressorLogic from "../logic/ContextCompressorLogic.js";
 import { logMessage } from "../utils/logger.js";
+import { v4 as uuidv4 } from "uuid";
 
 import {
   updateConversationContextInputSchema,
@@ -422,111 +423,274 @@ async function processNewMessages(conversationId, messages, options = {}) {
       currentIntent: null,
     };
 
+    // Get the current active purpose if tracking transitions
+    let previousIntent = null;
+    if (options.trackIntentTransitions) {
+      try {
+        previousIntent = await ConversationPurposeDetector.getActivePurpose(
+          conversationId
+        );
+        logMessage("DEBUG", "Retrieved previous intent", { previousIntent });
+      } catch (error) {
+        logMessage("WARN", "Failed to retrieve previous intent", {
+          error: error.message,
+        });
+      }
+    }
+
     // Process each message
     for (const message of messages) {
       try {
-        // Extra debugging log to capture input parameters
-        console.log("RECORDING MESSAGE - Input params:", {
-          content: message.content,
-          role: message.role,
-          conversationId,
-        });
+        let isTopicShift = false;
+        let activeTopicId = null;
 
-        // Record message in database
-        const messageId = await ConversationIntelligence.recordMessage(
+        // Only check for topic shifts on user messages
+        if (message.role === "user") {
+          // Check for topic shift
+          logMessage("DEBUG", "Checking for topic shift with user message");
+          isTopicShift = await ConversationIntelligence.detectTopicShift(
+            message.content,
+            conversationId
+          );
+
+          if (isTopicShift) {
+            logMessage("INFO", `Topic shift detected`, {
+              messageContent:
+                message.content.substring(0, 50) +
+                (message.content.length > 50 ? "..." : ""),
+            });
+            result.topicShift = true;
+          }
+        }
+
+        // Record the message first without a topic segment ID
+        // We'll update this after creating a new topic if needed
+        logMessage("DEBUG", `Recording message from ${message.role}`);
+        const recordedMessageId = await ConversationIntelligence.recordMessage(
           message.content,
           message.role,
           conversationId,
           [], // relatedContextEntityIds
-          null // topicSegmentId
+          null, // topicSegmentId - will be updated later if needed
+          options.trackIntentTransitions && result.currentIntent
+            ? result.currentIntent.purposeType
+            : null
         );
 
-        // Extra debugging log to confirm success
-        console.log("RECORDING MESSAGE - Success:", {
-          messageId,
-          role: message.role,
-        });
+        logMessage("DEBUG", `Message recorded with ID: ${recordedMessageId}`);
 
-        logMessage("DEBUG", `Recorded message from ${message.role}`);
-      } catch (msgErr) {
-        // Extra detailed error logging
-        console.error("RECORDING MESSAGE - FAILED:", {
-          error: msgErr.message,
-          stack: msgErr.stack,
-          messageRole: message.role,
-          messageContent:
-            message.content && message.content.substring(0, 50) + "...",
-        });
+        // Handle topic shift if detected
+        if (message.role === "user" && isTopicShift) {
+          // First, close any currently active topic segment
+          try {
+            const activeTopic =
+              await ConversationSegmenter.getActiveTopicForConversation(
+                conversationId
+              );
 
-        logMessage(
-          "WARN",
-          `Failed to record message in conversation intelligence`,
-          {
-            error: msgErr.message,
-            messageRole: message.role,
+            if (activeTopic) {
+              logMessage("INFO", "Closing active topic segment", {
+                topicId: activeTopic.topic_id,
+              });
+
+              await ConversationSegmenter.closeTopicSegment(
+                activeTopic.topic_id,
+                recordedMessageId
+              );
+            }
+          } catch (closeError) {
+            logMessage("WARN", "Failed to close active topic segment", {
+              error: closeError.message,
+            });
           }
-        );
-        // Continue with next message
-      }
-    }
 
-    // Check for topic shifts using conversation segmenter
-    try {
-      const segmentationResult = await ConversationSegmenter.detectTopicShift(
-        conversationId,
-        messages
-      );
-      result.topicShift = segmentationResult.topicShift;
+          // Generate a topic name
+          let topicName = "";
+          try {
+            topicName = await ConversationSegmenter.generateTopicName([
+              recordedMessageId,
+            ]);
+          } catch (nameError) {
+            topicName = `Topic from: ${message.content.substring(0, 30)}...`;
+            logMessage(
+              "WARN",
+              "Failed to generate topic name, using fallback",
+              {
+                error: nameError.message,
+              }
+            );
+          }
 
-      if (result.topicShift) {
-        logMessage("INFO", `Topic shift detected`, {
-          previousTopic: segmentationResult.previousTopic,
-          newTopic: segmentationResult.newTopic,
-          confidence: segmentationResult.confidence,
-        });
-      }
-    } catch (segmentErr) {
-      logMessage("WARN", `Failed to detect topic shift`, {
-        error: segmentErr.message,
-      });
-      // Continue with default value (false)
-    }
+          // Create a new topic segment with the recorded message ID
+          try {
+            logMessage("INFO", "Creating new topic segment");
+            const newTopicId =
+              await ConversationSegmenter.createNewTopicSegment(
+                conversationId,
+                recordedMessageId, // Use the actual message ID
+                {
+                  name: topicName,
+                  description: message.content,
+                }
+              );
 
-    // If tracking intent transitions is enabled
-    if (options.trackIntentTransitions) {
-      try {
-        const previousIntent =
-          await ConversationPurposeDetector.getActivePurpose(conversationId);
+            logMessage("INFO", `Created new topic segment`, {
+              topicId: newTopicId,
+            });
 
-        // Update intent based on new messages
-        const intentUpdateResult = await IntentPredictorLogic.updateIntent({
-          conversationId,
-          messages,
-        });
+            // Update the message with the new topic ID
+            // This requires a database update since we've already recorded the message
+            try {
+              const updateQuery = `
+                UPDATE conversation_history
+                SET topic_segment_id = ?
+                WHERE message_id = ?
+              `;
 
-        if (intentUpdateResult.intentChanged) {
-          result.intentTransition = true;
-          result.currentIntent = intentUpdateResult.newIntent;
+              await executeQuery(updateQuery, [newTopicId, recordedMessageId]);
+              logMessage("DEBUG", "Updated message with new topic ID", {
+                messageId: recordedMessageId,
+                topicId: newTopicId,
+              });
 
-          logMessage("INFO", `Intent transition detected`, {
-            from: previousIntent,
-            to: result.currentIntent,
-            confidence: intentUpdateResult.confidence,
-          });
+              // Use this topic ID for tracking
+              activeTopicId = newTopicId;
+            } catch (updateError) {
+              logMessage("ERROR", "Failed to update message with topic ID", {
+                error: updateError.message,
+              });
+            }
+          } catch (topicError) {
+            logMessage("ERROR", "Failed to create new topic segment", {
+              error: topicError.message,
+            });
+          }
+        } else if (message.role === "user" && !isTopicShift) {
+          // If no topic shift, associate with current active topic if any
+          try {
+            const activeTopic =
+              await ConversationSegmenter.getActiveTopicForConversation(
+                conversationId
+              );
 
-          // Update the active purpose in the conversation detector
-          await ConversationPurposeDetector.setActivePurpose(
-            conversationId,
-            result.currentIntent
-          );
-        } else {
-          result.currentIntent = previousIntent;
+            if (activeTopic) {
+              const updateQuery = `
+                UPDATE conversation_history
+                SET topic_segment_id = ?
+                WHERE message_id = ?
+              `;
+
+              await executeQuery(updateQuery, [
+                activeTopic.topic_id,
+                recordedMessageId,
+              ]);
+              logMessage("DEBUG", "Updated message with existing topic ID", {
+                messageId: recordedMessageId,
+                topicId: activeTopic.topic_id,
+              });
+
+              activeTopicId = activeTopic.topic_id;
+            }
+          } catch (error) {
+            logMessage(
+              "WARN",
+              "Failed to associate message with active topic",
+              {
+                error: error.message,
+              }
+            );
+          }
         }
-      } catch (intentErr) {
-        logMessage("WARN", `Failed to track intent transition`, {
-          error: intentErr.message,
+
+        // Detect conversation purpose for each user message
+        if (message.role === "user" && options.trackIntentTransitions) {
+          try {
+            // Get recent conversation history for context
+            const recentHistory =
+              await ConversationIntelligence.getConversationHistory(
+                conversationId,
+                10
+              );
+
+            // Detect purpose based on message and conversation history
+            const purposeResult =
+              await ConversationPurposeDetector.detectConversationPurpose(
+                message.content,
+                recentHistory
+              );
+
+            if (purposeResult) {
+              const newPurpose = purposeResult.purpose;
+              const currentPurpose = previousIntent
+                ? previousIntent.purposeType
+                : null;
+
+              // Check if purpose has changed
+              if (newPurpose !== currentPurpose) {
+                logMessage("INFO", "Conversation purpose change detected", {
+                  from: currentPurpose,
+                  to: newPurpose,
+                });
+
+                // Track the purpose transition
+                await ConversationPurposeDetector.trackPurposeTransition(
+                  conversationId,
+                  currentPurpose,
+                  newPurpose,
+                  recordedMessageId
+                );
+
+                // Update result for the handler function
+                result.intentTransition = true;
+                result.currentIntent = {
+                  purposeType: newPurpose,
+                  confidence: purposeResult.confidence,
+                };
+
+                // Update previous intent for next iteration
+                previousIntent = {
+                  purposeType: newPurpose,
+                  confidence: purposeResult.confidence,
+                };
+              }
+            }
+          } catch (purposeError) {
+            logMessage("WARN", "Failed to detect conversation purpose", {
+              error: purposeError.message,
+            });
+          }
+        }
+
+        // Update intent with the new message
+        if (options.trackIntentTransitions) {
+          try {
+            const intentUpdateResult = await IntentPredictorLogic.updateIntent({
+              conversationId,
+              messages: [message],
+              messageId: recordedMessageId,
+            });
+
+            // Check if intent has been updated during processing
+            if (intentUpdateResult.intentChanged && !result.intentTransition) {
+              result.intentTransition = true;
+              result.currentIntent = intentUpdateResult.newIntent;
+
+              logMessage("INFO", "Intent updated based on message content", {
+                intent: intentUpdateResult.newIntent,
+              });
+            }
+          } catch (intentError) {
+            logMessage("WARN", "Failed to update intent", {
+              error: intentError.message,
+            });
+          }
+        }
+      } catch (msgError) {
+        logMessage("ERROR", `Failed to process message`, {
+          error: msgError.message,
+          role: message.role,
+          content: message.content?.substring(0, 50) + "...",
         });
-        // Continue with default values
       }
     }
 
@@ -812,16 +976,18 @@ async function generateContextSynthesis(
         summaryText = `The conversation is now focused on ${activeFocus.type} "${activeFocus.identifier}"`;
 
         if (currentIntent) {
-          summaryText += ` with the purpose of ${currentIntent.replace(
-            /_/g,
-            " "
-          )}`;
+          const intentStr =
+            typeof currentIntent === "string"
+              ? currentIntent.replace(/_/g, " ")
+              : currentIntent;
+          summaryText += ` with the purpose of ${intentStr}`;
         }
       } else if (currentIntent) {
-        summaryText = `The conversation is focused on ${currentIntent.replace(
-          /_/g,
-          " "
-        )}`;
+        const intentStr =
+          typeof currentIntent === "string"
+            ? currentIntent.replace(/_/g, " ")
+            : currentIntent;
+        summaryText = `The conversation is focused on ${intentStr}`;
       }
 
       // Add recent message summary if available
@@ -842,10 +1008,18 @@ async function generateContextSynthesis(
         summaryText = `Continuing focus on ${activeFocus.type} "${activeFocus.identifier}"`;
 
         if (currentIntent) {
-          summaryText += ` with ${currentIntent.replace(/_/g, " ")}`;
+          const intentStr =
+            typeof currentIntent === "string"
+              ? currentIntent.replace(/_/g, " ")
+              : currentIntent;
+          summaryText += ` with ${intentStr}`;
         }
       } else if (currentIntent) {
-        summaryText = `Continuing with ${currentIntent.replace(/_/g, " ")}`;
+        const intentStr =
+          typeof currentIntent === "string"
+            ? currentIntent.replace(/_/g, " ")
+            : currentIntent;
+        summaryText = `Continuing with ${intentStr}`;
       }
     }
 

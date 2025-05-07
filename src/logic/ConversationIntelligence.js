@@ -21,6 +21,7 @@ import * as ContextCompressorLogic from "./ContextCompressorLogic.js";
  * @param {string} conversationId - The conversation ID
  * @param {string[]} [relatedContextEntityIds=[]] - Array of related context entity IDs
  * @param {string} [topicSegmentId] - Optional topic segment ID
+ * @param {string} [userIntent] - Optional user intent for the message
  * @returns {Promise<string>} The ID of the recorded message
  */
 export async function recordMessage(
@@ -28,7 +29,8 @@ export async function recordMessage(
   role,
   conversationId,
   relatedContextEntityIds = [],
-  topicSegmentId
+  topicSegmentId,
+  userIntent
 ) {
   try {
     // 1. Generate message_id
@@ -49,6 +51,7 @@ export async function recordMessage(
     );
     console.log("- timestamp:", timestamp);
     console.log("- topic_segment_id:", topicSegmentId || "null");
+    console.log("- user_intent:", userIntent || "null");
     console.log(
       "- related_context_entity_ids:",
       JSON.stringify(relatedContextEntityIds || [])
@@ -57,7 +60,7 @@ export async function recordMessage(
     // 2. Extract semantic markers (e.g., idioms, emphasis, question, etc.)
     let semantic_markers = [];
     if (role === "user" && TextTokenizerLogic.identifyLanguageSpecificIdioms) {
-      // Use a function if available, otherwise fallback to keyword spotting
+      // Always provide a language parameter, defaulting to "plaintext" if none is detected
       semantic_markers =
         TextTokenizerLogic.identifyLanguageSpecificIdioms(
           messageContent,
@@ -131,7 +134,7 @@ export async function recordMessage(
       timestamp,
       relatedContextEntityIds: JSON.stringify(relatedContextEntityIds || []),
       summary: null,
-      userIntent: null,
+      userIntent: userIntent || null,
       topicSegmentId: topicSegmentId || null,
       semantic_markers: JSON.stringify(semantic_markers),
       sentiment_indicators: JSON.stringify(sentiment_indicators),
@@ -141,6 +144,8 @@ export async function recordMessage(
       message_id: messageObject.message_id,
       conversation_id: messageObject.conversation_id,
       role: messageObject.role,
+      topic_segment_id: messageObject.topicSegmentId,
+      user_intent: messageObject.userIntent,
     });
 
     // 4. Call ContextIndexerLogic.indexConversationMessage
@@ -190,31 +195,50 @@ export async function getConversationTopics(
   conversationId,
   hierarchical = false
 ) {
-  if (hierarchical) {
-    // Use ConversationSegmenter to build hierarchy
-    return await ConversationSegmenter.buildTopicHierarchy(conversationId);
-  }
-  // Flat list: query conversation_topics table
-  const query = `
-    SELECT * FROM conversation_topics
-    WHERE conversation_id = ?
-    ORDER BY start_timestamp ASC
-  `;
-  const topics = await executeQuery(query, [conversationId]);
-  if (!topics || topics.length === 0) return [];
-  // Parse JSON fields
-  return topics.map((topic) => {
-    try {
-      topic.primary_entities = topic.primary_entities
-        ? JSON.parse(topic.primary_entities)
-        : [];
-      topic.keywords = topic.keywords ? JSON.parse(topic.keywords) : [];
-    } catch (err) {
-      topic.primary_entities = topic.primary_entities || [];
-      topic.keywords = topic.keywords || [];
+  try {
+    if (hierarchical) {
+      // Use ConversationSegmenter to build hierarchy
+      return await ConversationSegmenter.buildTopicHierarchy(conversationId);
     }
-    return topic;
-  });
+    // Flat list: query conversation_topics table
+    const query = `
+      SELECT * FROM conversation_topics
+      WHERE conversation_id = ?
+      ORDER BY start_timestamp ASC
+    `;
+    const result = await executeQuery(query, [conversationId]);
+
+    // Check if result has rows property and it's not empty
+    if (!result || !result.rows || result.rows.length === 0) {
+      console.log(`No topics found for conversation: ${conversationId}`);
+      return [];
+    }
+
+    // Create new objects with parsed JSON fields instead of modifying the originals
+    return result.rows.map((topic) => {
+      const newTopic = { ...topic }; // Create a shallow copy
+
+      try {
+        // Parse JSON strings into new properties
+        newTopic.primary_entities = topic.primary_entities
+          ? JSON.parse(topic.primary_entities)
+          : [];
+        newTopic.keywords = topic.keywords ? JSON.parse(topic.keywords) : [];
+      } catch (err) {
+        console.warn(`Error parsing JSON fields in topic: ${err.message}`);
+        newTopic.primary_entities = [];
+        newTopic.keywords = [];
+      }
+      return newTopic;
+    });
+  } catch (error) {
+    console.warn(`Failed to retrieve conversation topics`, {
+      error: error.message,
+      conversationId,
+    });
+    // Return empty array on error
+    return [];
+  }
 }
 
 /**
@@ -405,10 +429,20 @@ export async function summarizeConversation(conversationId) {
     ORDER BY timestamp ASC
   `;
   const messages = await executeQuery(query, [conversationId]);
-  if (!messages || messages.length === 0) return "";
+
+  // Check if results has a rows property and it's an array
+  if (
+    !messages ||
+    !messages.rows ||
+    !Array.isArray(messages.rows) ||
+    messages.rows.length === 0
+  ) {
+    console.warn(`No valid messages found for conversation ${conversationId}`);
+    return "";
+  }
 
   // 2. Concatenate messages as 'role: content' lines
-  const concatenated = messages
+  const concatenated = messages.rows
     .map((m) => `${m.role}: ${m.content}`)
     .join("\n");
 
@@ -431,11 +465,42 @@ export async function summarizeConversation(conversationId) {
  */
 export async function initializeConversation(conversationId, initialQuery) {
   try {
-    // Create a new entry in the conversation_history table for the initial system message
     const timestamp = new Date().toISOString();
-    const messageId = uuidv4();
+    let userMessageId = null; // Define outside the if block to make it available in the scope
 
-    const query = `
+    // First, record the user's initial query as a 'user' message
+    if (initialQuery && initialQuery.trim()) {
+      userMessageId = uuidv4();
+      const userQuery = `
+        INSERT INTO conversation_history (
+          message_id,
+          conversation_id, 
+          role,
+          content,
+          timestamp,
+          related_context_entity_ids,
+          summary,
+          user_intent
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `;
+
+      await executeQuery(userQuery, [
+        userMessageId,
+        conversationId,
+        "user", // Store as user role to properly track the user's input
+        initialQuery,
+        timestamp,
+        JSON.stringify([]),
+        "Initial user query",
+        "start_conversation",
+      ]);
+
+      console.log(`User query recorded with ID: ${userMessageId}`);
+    }
+
+    // Then create the system message to record conversation initialization
+    const systemMessageId = uuidv4();
+    const systemQuery = `
       INSERT INTO conversation_history (
         message_id,
         conversation_id, 
@@ -448,11 +513,11 @@ export async function initializeConversation(conversationId, initialQuery) {
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
-    await executeQuery(query, [
-      messageId,
+    await executeQuery(systemQuery, [
+      systemMessageId,
       conversationId,
       "system",
-      initialQuery || "Conversation started",
+      initialQuery ? "Conversation started with query" : "Conversation started",
       timestamp,
       JSON.stringify([]),
       "Conversation initialization",
@@ -467,10 +532,12 @@ export async function initializeConversation(conversationId, initialQuery) {
       );
     }
 
-    // Create initial topic segment
+    // Create initial topic segment using the user message ID if available
+    const messageIdForSegment = userMessageId || systemMessageId;
+
     await ConversationSegmenter.createNewTopicSegment(
       conversationId,
-      messageId,
+      messageIdForSegment,
       {
         name: "Initial conversation",
         description: initialQuery || "Conversation start",

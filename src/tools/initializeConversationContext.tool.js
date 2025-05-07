@@ -100,13 +100,35 @@ async function handler(input, sdkContext) {
 
     // 5. Initialize conversation intelligence tracker
     try {
+      logMessage(
+        "INFO",
+        `Initializing conversation intelligence tracker with user query: "${initialQuery}"`,
+        {
+          conversationId,
+        }
+      );
+
       await ConversationIntelligence.initializeConversation(
         conversationId,
         initialQuery
       );
-      logMessage("DEBUG", `Initialized conversation intelligence tracker`, {
+
+      // Verify that messages were properly stored
+      const recentMessages = await ConversationIntelligence.getRecentMessages(
         conversationId,
-      });
+        3
+      );
+      logMessage(
+        "INFO",
+        `Conversation initialized with ${recentMessages.length} messages`,
+        {
+          messages: recentMessages.map((m) => ({
+            role: m.role,
+            content:
+              m.content.substring(0, 50) + (m.content.length > 50 ? "..." : ""),
+          })),
+        }
+      );
     } catch (err) {
       logMessage("ERROR", `Failed to initialize conversation intelligence`, {
         error: err.message,

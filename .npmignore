@@ -1,30 +1,71 @@
-# Development files
-.git/
-node_modules/
+# Development and test files
+.cursor/
+.github/
+.vscode/
+tests/
+tasks/
+docs/
+coverage/
+*.test.js
+*.spec.js
+*.log
+
+# Environment files (except example)
 .env
 .env.local
-.vscode/
-.idea/
+.env.development
+.env.test
+.env.production
+
+# Source control
+.git/
+.gitignore
+
+# Project config files
+*.config.js
+!esbuild.config.js
+tsconfig.json
+.prettierrc
+.eslintrc
+
+# Temporary files
+.tmp/
+tmp/
+temp/
+*.tmp
+*.bak
+*.swp
+
+# Operating system files
 .DS_Store
-*.log
+Thumbs.db
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# IDE specific files
+.idea/
+*.iml
+*.sublime-*
+.project
+.settings/
+.classpath
 
 # Test files
 test/
 __tests__/
-coverage/
 test-vectors.js
 test-vectors.db
 *.db
 
 # Build artifacts
-.github/
-.gitignore
 .npmrc
 .editorconfig
 .prettierrc
 .eslintrc
 
 # Other
-docs/
-examples/
 *.tgz 

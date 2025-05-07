@@ -58,15 +58,32 @@ export function createToolHandler(handler, toolName) {
       // Extract additional parameters from any special formats
       const extractedParams = extractParamsFromInput(actualParams);
 
+      // Log the extracted parameters for debugging
+      logMessage("DEBUG", `${toolName} extracted parameters`, {
+        extractedParams: extractedParams,
+      });
+
       // Generate default parameters for this specific tool
       const defaultParams = createDefaultParamsForTool(toolName);
 
       // Merge extracted parameters with defaults, prioritizing user-provided values
       const mergedParams = { ...defaultParams, ...extractedParams };
 
+      // Log the merged parameters for debugging
+      logMessage("DEBUG", `${toolName} merged parameters`, {
+        mergedParams: mergedParams,
+      });
+
       // If conversation ID was provided, store it for future use
       if (mergedParams.conversationId) {
         global.lastConversationId = mergedParams.conversationId;
+      } else if (global.lastConversationId) {
+        // Use the last conversation ID if one wasn't provided
+        mergedParams.conversationId = global.lastConversationId;
+        logMessage(
+          "INFO",
+          `Using last conversation ID: ${global.lastConversationId}`
+        );
       }
 
       // Now call the handler with the properly merged parameters
@@ -139,7 +156,11 @@ function extractParamsFromInput(input) {
         }
       }
 
-      // Special case: Direct parameter formats for specific tools
+      // Handle direct parameters from cursor API or user input
+      if (input.conversationId) {
+        extractedParams.conversationId = input.conversationId;
+      }
+
       if (input.initialQuery) {
         extractedParams.initialQuery = input.initialQuery;
       }
@@ -154,6 +175,20 @@ function extractParamsFromInput(input) {
 
       if (input.name) {
         extractedParams.name = input.name;
+      }
+
+      // Process message array if present
+      if (input.newMessages) {
+        extractedParams.newMessages = Array.isArray(input.newMessages)
+          ? input.newMessages
+          : [input.newMessages];
+      }
+
+      // Process code changes if present
+      if (input.codeChanges) {
+        extractedParams.codeChanges = Array.isArray(input.codeChanges)
+          ? input.codeChanges
+          : [input.codeChanges];
       }
     }
     // Case 2: Input is a string

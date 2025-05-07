@@ -533,14 +533,14 @@ export async function closeTopicSegment(topicId, endMessageId) {
  */
 
 /**
- * Gets the currently active topic for a conversation
+ * Gets the active (most recent, non-ended) topic segment for a conversation
  *
- * @param {string} conversationId - ID of the conversation
- * @returns {Promise<Topic|null>} The active topic or null if no active topic exists
+ * @param {string} conversationId - Conversation ID
+ * @returns {Promise<object|null>} The active topic segment or null
  */
 export async function getActiveTopicForConversation(conversationId) {
   try {
-    // Query for the active topic (where end_message_id is NULL)
+    // Get the active topic
     const query = `
       SELECT * FROM conversation_topics
       WHERE conversation_id = ?
@@ -551,42 +551,51 @@ export async function getActiveTopicForConversation(conversationId) {
 
     const result = await executeQuery(query, [conversationId]);
 
-    // If no active topic found, return null
-    if (!result || result.length === 0) {
+    if (!result.rows || result.rows.length === 0) {
       return null;
     }
 
-    // Get the active topic (the most recent one if multiple exist)
-    const activeTopic = result[0];
+    // Convert the JSON fields back to objects
+    const topic = result.rows[0];
 
-    // Parse JSON fields
     try {
-      // Parse primary_entities JSON string to array
-      activeTopic.primary_entities = activeTopic.primary_entities
-        ? JSON.parse(activeTopic.primary_entities)
-        : [];
+      // Create a new object for parsed fields to avoid modifying read-only properties
+      const parsedTopic = { ...topic };
 
-      // Parse keywords JSON string to array
-      activeTopic.keywords = activeTopic.keywords
-        ? JSON.parse(activeTopic.keywords)
-        : [];
-    } catch (jsonError) {
-      console.warn(
-        `Error parsing JSON fields for topic ${activeTopic.topic_id}:`,
-        jsonError
+      // Parse JSON fields if they exist and are strings
+      if (topic.keywords && typeof topic.keywords === "string") {
+        parsedTopic.keywords = JSON.parse(topic.keywords);
+      }
+
+      if (
+        topic.related_entities &&
+        typeof topic.related_entities === "string"
+      ) {
+        parsedTopic.related_entities = JSON.parse(topic.related_entities);
+      }
+
+      if (
+        topic.primary_entities &&
+        typeof topic.primary_entities === "string"
+      ) {
+        parsedTopic.primary_entities = JSON.parse(topic.primary_entities);
+      }
+
+      return parsedTopic;
+    } catch (parseError) {
+      console.error(
+        `Error parsing JSON fields for topic ${topic.topic_id}:`,
+        parseError
       );
-      // Provide default empty arrays if JSON parsing fails
-      activeTopic.primary_entities = activeTopic.primary_entities || [];
-      activeTopic.keywords = activeTopic.keywords || [];
+      // Return the original topic without attempting to parse JSON fields
+      return topic;
     }
-
-    return activeTopic;
   } catch (error) {
     console.error(
       `Error getting active topic for conversation ${conversationId}:`,
       error
     );
-    throw new Error(`Failed to get active topic: ${error.message}`);
+    throw error;
   }
 }
 
@@ -894,5 +903,74 @@ export async function buildTopicHierarchy(conversationId) {
       error
     );
     throw new Error(`Failed to build topic hierarchy: ${error.message}`);
+  }
+}
+
+/**
+ * Gets all topics for a specific conversation
+ *
+ * @param {string} conversationId - ID of the conversation
+ * @param {boolean} [activeOnly=false] - If true, only return active (not closed) topics
+ * @returns {Promise<Array<Topic>>} Array of topic objects
+ */
+export async function getTopicsForConversation(
+  conversationId,
+  activeOnly = false
+) {
+  try {
+    // Build the query with optional filter for active topics
+    let query = `
+      SELECT * FROM conversation_topics
+      WHERE conversation_id = ?
+    `;
+
+    if (activeOnly) {
+      query += ` AND end_message_id IS NULL`;
+    }
+
+    query += ` ORDER BY start_timestamp ASC`;
+
+    const result = await executeQuery(query, [conversationId]);
+
+    // If no topics found, return empty array
+    if (
+      !result ||
+      !result.rows ||
+      !Array.isArray(result.rows) ||
+      result.rows.length === 0
+    ) {
+      return [];
+    }
+
+    // Parse JSON fields for each topic
+    return result.rows.map((topic) => {
+      try {
+        // Parse JSON string fields
+        return {
+          ...topic,
+          primary_entities: topic.primary_entities
+            ? JSON.parse(topic.primary_entities)
+            : [],
+          keywords: topic.keywords ? JSON.parse(topic.keywords) : [],
+        };
+      } catch (jsonError) {
+        console.warn(
+          `Error parsing JSON fields for topic ${topic.topic_id}:`,
+          jsonError
+        );
+        // Return topic with default empty arrays for JSON fields
+        return {
+          ...topic,
+          primary_entities: [],
+          keywords: [],
+        };
+      }
+    });
+  } catch (error) {
+    console.error(
+      `Error getting topics for conversation ${conversationId}:`,
+      error
+    );
+    throw new Error(`Failed to get conversation topics: ${error.message}`);
   }
 }

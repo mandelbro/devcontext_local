@@ -128,6 +128,46 @@ async function handler(input, sdkContext) {
         milestoneEventId
       );
       logMessage("INFO", `Created milestone with ID: ${milestoneId}`);
+
+      // Also save milestone in context_states table
+      try {
+        const stateId = uuidv4();
+        const currentTime = new Date().toISOString();
+        const stateData = JSON.stringify(snapshotData);
+
+        const insertStateQuery = `
+          INSERT INTO context_states (
+            state_id, milestone_id, conversation_id, state_type, 
+            state_data, created_at, metadata
+          ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        `;
+
+        const stateParams = [
+          stateId,
+          milestoneId,
+          conversationId,
+          "milestone",
+          stateData,
+          currentTime,
+          JSON.stringify({ name, description, category: milestoneCategory }),
+        ];
+
+        await executeQuery(insertStateQuery, stateParams);
+        logMessage(
+          "INFO",
+          `Saved milestone state in context_states with ID: ${stateId}`
+        );
+      } catch (stateErr) {
+        logMessage(
+          "ERROR",
+          `Failed to save milestone in context_states table`,
+          {
+            error: stateErr.message,
+            milestoneId,
+          }
+        );
+        // Continue despite error, as we already have the snapshot
+      }
     } catch (snapshotErr) {
       logMessage("ERROR", `Failed to create milestone snapshot`, {
         error: snapshotErr.message,

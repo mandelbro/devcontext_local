@@ -367,10 +367,10 @@ export const initializeDatabaseSchema = async () => {
         purpose_id TEXT PRIMARY KEY, -- UUID
         conversation_id TEXT NOT NULL,
         purpose_type TEXT NOT NULL,  -- 'debugging', 'feature_planning', 'code_review', etc.
-        confidence REAL NOT NULL DEFAULT 0.0,
-        start_timestamp TIMESTAMP NOT NULL,
-        end_timestamp TIMESTAMP,     -- NULL if ongoing
-        metadata TEXT                -- JSON with additional classification data
+        confidence REAL DEFAULT 0.0, -- Confidence score (0.0 to 1.0)
+        start_timestamp TEXT NOT NULL, -- ISO timestamp
+        end_timestamp TEXT, -- ISO timestamp, NULL if still active
+        metadata TEXT -- Additional metadata in JSON format
       )`,
 
       // Indexes for conversation_purposes
@@ -472,6 +472,40 @@ export const initializeDatabaseSchema = async () => {
 
       // Indexes for system_logs
       `CREATE INDEX IF NOT EXISTS idx_system_logs_timestamp_level ON system_logs(timestamp DESC, level)`,
+
+      // Make sure knowledge_items table exists
+      `CREATE TABLE IF NOT EXISTS knowledge_items (
+        item_id TEXT PRIMARY KEY, -- UUID
+        item_type TEXT NOT NULL, -- Type of knowledge item (concept, code_pattern, domain_term, etc.)
+        name TEXT NOT NULL, -- Display name of the knowledge item
+        content TEXT, -- JSON or raw content depending on type
+        metadata TEXT, -- Additional metadata as JSON
+        confidence_score REAL DEFAULT 0.5, -- Confidence score
+        created_at TEXT NOT NULL, -- Creation timestamp
+        updated_at TEXT NOT NULL, -- Last update timestamp
+        conversation_id TEXT -- Source conversation ID
+      )`,
+
+      // Indexes for knowledge_items
+      `CREATE INDEX IF NOT EXISTS idx_knowledge_items_type ON knowledge_items(item_type)`,
+      `CREATE INDEX IF NOT EXISTS idx_knowledge_items_conversation ON knowledge_items(conversation_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_knowledge_items_confidence ON knowledge_items(confidence_score DESC)`,
+
+      // Make sure context_states table exists
+      `CREATE TABLE IF NOT EXISTS context_states (
+        state_id TEXT PRIMARY KEY, -- UUID
+        milestone_id TEXT,
+        conversation_id TEXT,
+        topic_id TEXT,
+        state_type TEXT NOT NULL, -- Type of context state
+        state_data TEXT, -- JSON data representing the state
+        created_at TEXT NOT NULL, -- Creation timestamp
+        metadata TEXT -- Additional metadata as JSON
+      )`,
+
+      // Indexes for context_states
+      `CREATE INDEX IF NOT EXISTS idx_context_states_milestone ON context_states(milestone_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_context_states_conversation ON context_states(conversation_id)`,
     ];
 
     // Execute each statement in sequence

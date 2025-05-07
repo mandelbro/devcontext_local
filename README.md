@@ -33,8 +33,28 @@ The server operates with a database instance dedicated to a single project, elim
 - **Topic Segmentation**: Automatically detects conversation topic shifts while maintaining context continuity
 - **Development Timeline**: Records significant development events and maintains milestone checkpoints
 - **Purpose-Aware Responses**: Detects conversation purpose (debugging, planning, code review) to tailor context
+- **Automated Background Tasks**: Performs periodic context decay and pattern consolidation for optimal memory management
 - **Low Resource Requirements**: Optimized for performance without requiring GPU or specialized hardware
 - **Single-File Deployment**: Bundled into a single executable JavaScript file for simple IDE integration
+
+## Latest Updates
+
+### v1.0.3
+
+- **Enhanced Topic Handling**: Improved conversation segmentation with better topic detection
+- **User Intent Tracking**: Messages are now properly tagged with user intent information
+- **Context Continuity**: Better management of context during topic transitions
+- **Conversation Flow**: Refined conversation flow for more natural interaction
+
+### v1.0.2
+
+- **Bug Fix**: Fixed issue with initial user queries not being properly stored in conversation history
+- **Improved Logging**: Enhanced logging for conversation tracking and debugging
+
+### v1.0.1
+
+- **Background Tasks**: Added automated scheduling for context decay and pattern consolidation
+- **Improved Stability**: Enhanced error handling and resource management
 
 ## System Architecture
 
@@ -56,12 +76,24 @@ DevContext follows a modular architecture internally, bundled into a single depl
 
 ## Installation
 
-### Prerequisites
+### Via npm (Recommended)
+
+```bash
+# Install globally
+npm install -g devcontext
+
+# Or install in your project
+npm install devcontext --save
+```
+
+### From source
+
+#### Prerequisites
 
 - Node.js 18.0.0 or higher
 - TursoDB account or compatible SQLite database
 
-### Install Dependencies
+#### Install Dependencies
 
 ```bash
 # Clone the repository
@@ -72,7 +104,7 @@ cd devcontext
 npm install
 ```
 
-### Build the Server
+#### Build the Server
 
 ```bash
 # Build the bundled server

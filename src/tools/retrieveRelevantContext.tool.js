@@ -125,14 +125,52 @@ async function handler(input, sdkContext) {
       `Returning simplified context with ${simplifiedResult.conversationContext.length} conversation messages`
     );
 
-    return simplifiedResult;
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({
+            conversationId: input.conversationId,
+            query: input.query,
+            retrievalTime: Date.now(),
+            relevantContext: {
+              conversationContext: simplifiedResult.conversationContext,
+              codeContext: [],
+              patternContext: [],
+              fileContext: [],
+            },
+            focusInfo: {
+              currentTopic: simplifiedResult.currentTopic,
+              currentPurpose: simplifiedResult.currentPurpose,
+            },
+            queryAnalysis: {
+              status: simplifiedResult.statusMessage,
+              metrics: simplifiedResult.metrics,
+            },
+          }),
+        },
+      ],
+    };
   } catch (error) {
     logMessage("ERROR", `Error in retrieve_relevant_context handler`, {
       error: error.message,
       code: error.code,
     });
 
-    throw error;
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({
+            error: true,
+            errorCode: error.code || "RETRIEVAL_FAILED",
+            errorDetails: error.message,
+            conversationId: input.conversationId,
+            query: input.query,
+          }),
+        },
+      ],
+    };
   }
 }
 

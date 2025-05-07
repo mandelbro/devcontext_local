@@ -235,14 +235,34 @@ export async function analyzePatternsAroundMilestone(milestoneSnapshotId) {
     // 1. Retrieve the context_snapshots record
     const snapshotQuery = `SELECT * FROM context_states WHERE milestone_id = ?`;
     const snapshots = await executeQuery(snapshotQuery, [milestoneSnapshotId]);
-    if (!snapshots || snapshots.length === 0) {
+    if (!snapshots || !snapshots.rows || snapshots.rows.length === 0) {
       console.warn(
         `[LearningSystem] No context snapshot found for milestone ${milestoneSnapshotId}`
       );
       return;
     }
-    const snapshot = snapshots[0];
-    const { created_at, focus_areas, conversation_id } = snapshot;
+
+    const snapshot = snapshots.rows[0];
+    if (!snapshot) {
+      console.warn(
+        `[LearningSystem] Empty snapshot data for milestone ${milestoneSnapshotId}`
+      );
+      return;
+    }
+
+    // Safely extract properties with defaults
+    const created_at = snapshot.created_at || new Date().toISOString();
+    const focus_areas = snapshot.focus_areas || [];
+    const conversation_id = snapshot.conversation_id;
+
+    // Check if we have a valid conversation_id
+    if (!conversation_id) {
+      console.warn(
+        `[LearningSystem] No conversation_id in snapshot for milestone ${milestoneSnapshotId}`
+      );
+      return;
+    }
+
     const milestoneTime = new Date(created_at).getTime();
     const windowBeforeMs = 2 * 60 * 60 * 1000; // 2 hours before
     const windowAfterMs = 1 * 60 * 60 * 1000; // 1 hour after
@@ -263,6 +283,17 @@ export async function analyzePatternsAroundMilestone(milestoneSnapshotId) {
       windowEnd,
     ]);
 
+    // Only proceed if we have events
+    if (!events || !events.rows || events.rows.length === 0) {
+      console.log(
+        `[LearningSystem] No events found in the time window for milestone ${milestoneSnapshotId}`
+      );
+      return;
+    }
+
+    // Access the rows property correctly
+    const eventRows = events.rows || [];
+
     // 3. Fetch conversation history in the window
     const historyQuery = `
       SELECT * FROM conversation_history
@@ -277,10 +308,13 @@ export async function analyzePatternsAroundMilestone(milestoneSnapshotId) {
       windowEnd,
     ]);
 
+    // Access the rows property correctly
+    const messageRows = messages && messages.rows ? messages.rows : [];
+
     // 4. Analyze for patterns
     // a) Common code entities accessed
     const entityAccessCounts = {};
-    for (const event of events) {
+    for (const event of eventRows) {
       if (event.data) {
         try {
           const data =
@@ -302,7 +336,7 @@ export async function analyzePatternsAroundMilestone(milestoneSnapshotId) {
       }
     }
     // b) Common search queries
-    const searchQueries = events
+    const searchQueries = eventRows
       .filter((e) => e.type === "search_query")
       .map((e) => {
         try {
@@ -317,7 +351,7 @@ export async function analyzePatternsAroundMilestone(milestoneSnapshotId) {
     // For simplicity, just count topic_segment_id and purpose_type in messages
     const topicCounts = {};
     const purposeCounts = {};
-    for (const msg of messages) {
+    for (const msg of messageRows) {
       if (msg.topic_segment_id) {
         topicCounts[msg.topic_segment_id] =
           (topicCounts[msg.topic_segment_id] || 0) + 1;

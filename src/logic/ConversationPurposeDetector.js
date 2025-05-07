@@ -250,25 +250,42 @@ const PURPOSE_TYPES = {
 /**
  * Detects the primary purpose of a conversation by analyzing message content
  *
- * @param {Message[]} messages - Array of conversation messages to analyze
+ * @param {Message|Message[]} messages - Message or array of conversation messages to analyze
  * @returns {Promise<{purposeType: string, confidence: number}>} The detected purpose and confidence score
  */
 export async function detectConversationPurpose(messages) {
   try {
-    if (!messages || messages.length === 0) {
+    if (!messages) {
+      return { purposeType: "general_query", confidence: 0.5 };
+    }
+
+    // Normalize input to always be an array
+    const messageArray = Array.isArray(messages) ? messages : [messages];
+
+    if (messageArray.length === 0) {
       return { purposeType: "general_query", confidence: 0.5 };
     }
 
     // 1. Concatenate the content of messages, giving priority to user messages
     let concatenatedContent = "";
-    const userMessages = messages.filter((msg) => msg.role === "user");
+    // Convert message format if it's from database (with messageId vs id)
+    const normalizedMessages = messageArray.map((msg) => ({
+      role: msg.role || (msg.messageId ? "user" : "user"), // Default to user if role is missing
+      content: msg.content || "",
+    }));
+
+    const userMessages = normalizedMessages.filter(
+      (msg) => msg.role === "user"
+    );
 
     if (userMessages.length > 0) {
       // If we have user messages, prioritize those
       concatenatedContent = userMessages.map((msg) => msg.content).join(" ");
     } else {
       // Otherwise use all messages
-      concatenatedContent = messages.map((msg) => msg.content).join(" ");
+      concatenatedContent = normalizedMessages
+        .map((msg) => msg.content)
+        .join(" ");
     }
 
     // 2. Tokenize and extract keywords
@@ -410,14 +427,18 @@ export async function getActivePurpose(conversationId) {
  * Records a transition to a new conversation purpose
  *
  * @param {string} conversationId - ID of the conversation
+ * @param {string} previousPurposeType - The previously active purpose type (if any)
  * @param {string} newPurposeType - The new detected purpose type
- * @param {number} confidence - Confidence score for this purpose detection (0-1)
+ * @param {string} [triggerMessageId] - ID of the message that triggered this transition
+ * @param {number} [confidence=0.7] - Confidence score for this purpose detection (0-1)
  * @returns {Promise<string>} The ID of the newly created purpose record
  */
 export async function trackPurposeTransition(
   conversationId,
+  previousPurposeType,
   newPurposeType,
-  confidence
+  triggerMessageId,
+  confidence = 0.7
 ) {
   try {
     // 1. Get current active purpose for the conversation
@@ -449,15 +470,21 @@ export async function trackPurposeTransition(
     // 4. Get current timestamp for start_timestamp
     const start_timestamp = new Date().toISOString();
 
-    // 5. Insert the new purpose record
+    // 5. Prepare metadata with trigger message ID if provided
+    const metadata = triggerMessageId
+      ? JSON.stringify({ trigger_message_id: triggerMessageId })
+      : null;
+
+    // 6. Insert the new purpose record
     const insertQuery = `
       INSERT INTO conversation_purposes (
         purpose_id,
         conversation_id,
         purpose_type,
         confidence,
-        start_timestamp
-      ) VALUES (?, ?, ?, ?, ?)
+        start_timestamp,
+        metadata
+      ) VALUES (?, ?, ?, ?, ?, ?)
     `;
 
     const params = [
@@ -466,6 +493,7 @@ export async function trackPurposeTransition(
       newPurposeType,
       confidence,
       start_timestamp,
+      metadata,
     ];
 
     await executeQuery(insertQuery, params);
@@ -474,7 +502,7 @@ export async function trackPurposeTransition(
       `Created new purpose record: ${newPurposeType} (${purpose_id}) for conversation ${conversationId}`
     );
 
-    // 6. Return the purpose_id
+    // 7. Return the purpose_id
     return purpose_id;
   } catch (error) {
     console.error(
@@ -1184,6 +1212,8 @@ export async function detectInitialPurpose(conversationId, initialQuery) {
       await trackPurposeTransition(
         conversationId,
         result.purposeType,
+        result.purposeType,
+        null,
         result.confidence
       );
 

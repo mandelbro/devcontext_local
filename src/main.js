@@ -22,6 +22,11 @@ import {
   createInitializeContextHandler,
   createFinalizeContextHandler,
 } from "./tools/mcpDevContextTools.js";
+import { applyDecayToAll } from "./logic/ContextPrioritizerLogic.js";
+import { scheduleConsolidation } from "./logic/GlobalPatternRepository.js";
+
+// Store timers for cleanup during shutdown
+let decayTimer = null;
 
 /**
  * Start the MCP server
@@ -70,6 +75,36 @@ async function startServer() {
     process.exit(1);
   }
 
+  // Schedule periodic background tasks
+  try {
+    // Schedule pattern consolidation (e.g., every hour)
+    scheduleConsolidation(60);
+    logMessage("info", "Scheduled periodic pattern consolidation.");
+
+    // Schedule context decay (e.g., every 24 hours)
+    const decayInterval = 24 * 60 * 60 * 1000; // 24 hours
+    decayTimer = setInterval(async () => {
+      try {
+        logMessage("info", "Applying context decay...");
+        await applyDecayToAll();
+        logMessage("info", "Context decay applied successfully.");
+      } catch (err) {
+        logMessage("error", "Error applying context decay:", {
+          error: err.message,
+        });
+      }
+    }, decayInterval);
+    logMessage(
+      "info",
+      `Scheduled periodic context decay every ${
+        decayInterval / (60 * 60 * 1000)
+      } hours.`
+    );
+  } catch (error) {
+    logMessage("warn", `Failed to schedule background tasks: ${error.message}`);
+    // Continue server startup despite scheduling failure
+  }
+
   // Create and initialize the MCP server
   const server = new McpServer({
     name: "cursor10x",
@@ -98,12 +133,46 @@ async function startServer() {
   const transport = new StdioServerTransport();
   logMessage("info", `Starting MCP server with PID ${process.pid}...`);
 
+  // Set up graceful shutdown handler
+  setupGracefulShutdown();
+
   try {
     await server.connect(transport);
     logMessage("info", "MCP server stopped.");
+    cleanupTimers();
   } catch (error) {
     logMessage("error", `MCP server error: ${error.message}`);
+    cleanupTimers();
     process.exit(1);
+  }
+}
+
+/**
+ * Set up handlers for graceful shutdown
+ */
+function setupGracefulShutdown() {
+  // Handle terminal signals
+  process.on("SIGINT", () => {
+    logMessage("info", "Received SIGINT signal. Shutting down gracefully...");
+    cleanupTimers();
+    process.exit(0);
+  });
+
+  process.on("SIGTERM", () => {
+    logMessage("info", "Received SIGTERM signal. Shutting down gracefully...");
+    cleanupTimers();
+    process.exit(0);
+  });
+}
+
+/**
+ * Clean up all interval timers
+ */
+function cleanupTimers() {
+  if (decayTimer) {
+    clearInterval(decayTimer);
+    decayTimer = null;
+    logMessage("info", "Cleared context decay timer.");
   }
 }
 
@@ -115,6 +184,7 @@ if (
   startServer().catch((error) => {
     logMessage("error", `Unhandled error in startServer: ${error.message}`);
     console.error(error);
+    cleanupTimers();
     process.exit(1);
   });
 }
