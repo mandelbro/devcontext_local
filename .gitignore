@@ -1,0 +1,16 @@
+node_modules
+/node_modules
+node_modules/
+.env.local
+.env
+.cursor/mcp.json
+
+tasks/
+/tasks
+
+*.tgz
+
+.cursorrules
+
+docs/
+/docs/

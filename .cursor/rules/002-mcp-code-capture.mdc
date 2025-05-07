@@ -1,0 +1,24 @@
+---
+description: Comprehensive Memory System Code Capture Rules
+globs: **/*
+alwaysApply: true
+---
+# Code Capture and Tracking for MCP Memory
+
+These rules ensure code changes are captured and tracked appropriately using MCP tools.
+
+## File Change Trigger
+
+```javascript
+// Automatically capture code changes when files are modified
+// Debounced by 500ms to prevent excessive calls during typing
+// Target latency: <50ms for synchronous processing
+onFileChange: (file) => {
+  mcp_cursor10x_mcp_capture_code({
+    session_id: "{{SESSION_ID}}",
+    file_path: "{{FILE_PATH}}",
+    code_content: "{{FILE_CONTENT}}",
+    priority: "normal",
+  });
+};
+```

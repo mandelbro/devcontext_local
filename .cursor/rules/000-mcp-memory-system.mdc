@@ -1,0 +1,176 @@
+---
+description: Comprehensive Memory System for autonomous Cursor operation
+globs: **/*
+alwaysApply: true
+---
+
+# MCP Memory System Rules
+
+The memory system follows a strict tool execution pattern:
+
+```javascript
+// ✅ DO: Follow this execution pattern for ALL conversations
+// 1. BEGIN with init_context - EXACTLY ONCE at the start
+// 2. USE appropriate tools throughout the conversation as needed
+// 3. END with finalize_session - EXACTLY ONCE at the very end
+
+// ❌ DON'T: Call init_context multiple times in one response
+// ❌ DON'T: Call finalize_session in the middle of a conversation
+// ❌ DON'T: Skip storing important context or decisions
+```
+
+## Session Initialization
+
+The FIRST action in the BEGINNING of EVERY response MUST be to initialize the conversation with this single tool call and display the banner from the response immediately after. It MUST be called EXACTLY ONCE per conversation and ONLY at the very beginning after receiving user input:
+
+```javascript
+// ✅ DO: Initialize context at the start of each session
+// Use progressive loading for fast initial response
+mcp_cursor10x_mcp_init_context({
+  session_id: "{{SESSION_ID}}",
+  priority: "high" || "medium" || "low",
+  mode: "progressive" || "standard",
+});
+
+// ❌ DON'T: Call multiple times within the same conversation
+// ❌ DON'T: Call in the middle or end of a conversation
+// ❌ DON'T: Skip calling this at the start
+// ❌ DON'T: Use standard mode unless you need to wait for complete context
+```
+
+## Code Capture
+
+Automatically capture code changes to maintain up-to-date working memory. EVERY file being worked on or modified MUST be tracked - not files being read. This should be called whenever starting work on a file:
+
+```javascript
+// ✅ DO: Capture code changes after file modifications
+// Target latency: <50ms
+mcp_cursor10x_mcp_capture_code({
+  session_id: "{{SESSION_ID}}",
+  file_path: "{{FILE_PATH}}",
+  code_content: "{{FILE_CONTENT}}",
+  priority: "high" || "medium" || "low",
+});
+
+// ❌ DON'T: Capture code during rapid typing (use debouncing)
+// ❌ DON'T: Set priority to "critical" for routine updates
+// ❌ DON'T: Track files that are only being read
+```
+
+## Context Retrieval
+
+Use hybrid search when specific context is needed to answer questions. Use context retrieval tools as needed throughout the conversation:
+
+```javascript
+// ✅ DO: Retrieve context when additional information is needed
+// Target latency: <120ms
+mcp_cursor10x_mcp_hybrid_search({
+  session_id: "{{SESSION_ID}}",
+  query: "{{USER_QUERY}}",
+  limit: 10,
+  threshold: 0.6,
+  tiered: true || false,
+  language: "{{CURRENT_LANGUAGE}}",
+});
+
+// ❌ DON'T: Call this on every interaction
+// ❌ DON'T: Use for generic questions that don't need project context
+```
+
+## Conversation Storage
+
+Store conversation messages to maintain continuity:
+
+```javascript
+// ✅ DO: Store messages for conversation context
+mcp_cursor10x_mcp_store_conversation({
+  session_id: "{{SESSION_ID}}",
+  messages: [{ role: "user", content: "{{USER_MESSAGE}}", importance: 0.7 }],
+  summarize: false || true,
+});
+
+// EVERY assistant response containing important information MUST be stored. This can be called MULTIPLE times as needed during a conversation to store significant assistant responses. PLEASE BE SURE TO GATHER THE MESSAGES THROUGHOUT THE CONVERSATION AND THEN SEND THEM ALL TOGETHER IF POSSIBLE RATHER THAN MAKING MULTIPLE TOOL CALLS THROUGHOUT THE CONVERSATION:
+mcp_cursor10x_mcp_store_conversation({
+  session_id: "{{SESSION_ID}}",
+  messages: [
+    { role: "assistant", content: "{{ASSISTANT_MESSAGE}}", importance: 0.6 },
+  ],
+  summarize: false || true,
+});
+
+// ❌ DON'T: Store with summarize=true on every message
+// ❌ DON'T: Skip storing important context
+```
+
+## Conversation Summarization
+
+Generate summaries for long conversations to maintain context without exceeding token limits:
+
+```javascript
+// ✅ DO: Create summaries when conversation length reaches a threshold
+mcp_cursor10x_mcp_store_conversation({
+  session_id: "{{SESSION_ID}}",
+  messages: [],
+  summarize: true || true,
+  summary_type: "incremental" || "topic" || "session",
+});
+
+// ❌ DON'T: Over-summarize and lose important details
+// ❌ DON'T: Wait too long between summaries
+```
+
+## Memory Processing
+
+Trigger explicit memory processing operations when needed:
+
+```javascript
+// ✅ DO: Process memory to improve quality and reduce noise
+mcp_cursor10x_mcp_process_memory({
+  session_id: "{{SESSION_ID}}",
+  operation: "summarize" || "consolidate",
+  options: { minImportance: 0.3, limit: 20 },
+});
+
+// For pattern promotion:
+mcp_cursor10x_mcp_process_memory({
+  session_id: "{{SESSION_ID}}",
+  operation: "promote_patterns",
+  options: { minFrequency: 3, minReinforcement: 0.5 },
+});
+
+// ❌ DON'T: Process memory during time-sensitive operations
+// ❌ DON'T: Process memory too frequently
+```
+
+## Session Finalization
+
+Save the session state and trigger cleanup when ending. This EXACT sequence MUST be executed at the VERY END of EVERY conversation and EXACTLY ONCE per conversation:
+
+```javascript
+// ✅ DO: Call EXACTLY ONCE at the very end of the conversation
+// Target latency: <300ms for critical operations
+mcp_cursor10x_mcp_finalize_session({
+  session_id: "{{SESSION_ID}}",
+  save_checkpoint: true || false,
+  conversation: [
+    { role: "user", content: "{{USER_MESSAGE}}", importance: 0.7 },
+    { role: "assistant", content: "{{ASSISTANT_MESSAGE}}", importance: 0.6 },
+  ],
+  summarize: true || false,
+});
+
+// ❌ DON'T: Call in the middle of a conversation
+// ❌ DON'T: Call multiple times
+// ❌ DON'T: Skip calling this at the end
+```
+
+## Tool Performance Targets
+
+When implementing rules that trigger tool calls, respect these performance targets:
+
+- **init_context**: <150ms for initial context retrieval
+- **capture_code**: <50ms for synchronous processing
+- **hybrid_search**: <120ms for context retrieval
+- **finalize_session**: <300ms for checkpoint saving
+
+Background tasks (embedding generation, memory consolidation, pattern promotion) occur asynchronously and don't block tool responses.

@@ -1,0 +1,67 @@
+{
+  "name": "devcontext",
+  "version": "1.0.0",
+  "description": "DevContext is a cutting-edge Model Context Protocol (MCP) server designed to provide developers with continuous, project-centric context awareness.",
+  "main": "dist/mcp-server.bundle.js",
+  "type": "module",
+  "scripts": {
+    "build": "node esbuild.config.js",
+    "start": "node dist/mcp-server.bundle.js",
+    "start-with-env": "dotenv -- node dist/mcp-server.bundle.js",
+    "dev": "nodemon index.js",
+    "test": "echo \"No tests configured yet\" && exit 0",
+    "test-vectors": "node test-vectors.js",
+    "prepare": "npm run build",
+    "prepublishOnly": "npm test"
+  },
+  "bin": {
+    "cursor10x-mcp": "index.js"
+  },
+  "files": [
+    "dist/",
+    "README.md",
+    "LICENSE",
+    "package.json",
+    ".env.example"
+  ],
+  "keywords": [
+    "cursor",
+    "memory",
+    "mcp",
+    "claude",
+    "ai",
+    "context",
+    "persistence",
+    "devcontext",
+    "windsurf",
+    "agent memory",
+    "agentic context",
+    "agentic memory"
+  ],
+  "author": "aurda012",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/aurda012/cursor10x-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/aurda012/cursor10x-mcp/issues"
+  },
+  "homepage": "https://github.com/aurda012/cursor10x-mcp",
+  "license": "MIT",
+  "dependencies": {
+    "@libsql/client": "^0.5.6",
+    "@modelcontextprotocol/sdk": "^1.11.0",
+    "acorn": "^8.14.1",
+    "dotenv": "^16.5.0",
+    "uuid": "^11.1.0",
+    "zod": "^3.24.3"
+  },
+  "devDependencies": {
+    "esbuild": "^0.20.0",
+    "esbuild-node-externals": "^1.13.0",
+    "nodemon": "^3.1.9"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
