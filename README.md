@@ -12,6 +12,12 @@ DevContext is a cutting-edge Model Context Protocol (MCP) server designed to pro
 
 The server operates with a database instance dedicated to a single project, eliminating cross-project complexity and ensuring performance with minimal resource requirements. DevContext builds a comprehensive understanding of your codebase - from repository structure down to individual functions - while continuously learning from and adapting to your development patterns.
 
+**The BEST way** to use this MCP server is to follow the guide below on implementing the provided Cursor Rules system which in turn gives you:
+
+- **Completely autonomous context management**
+- Autonomous **external documentation context and use**
+- Complete **task management** workflow integration
+
 ### Core Technologies
 
 - **Node.js**: Runtime environment (Node.js 18+)
@@ -91,6 +97,8 @@ Replace `your-turso-database-url` and `your-turso-auth-token` with the values ob
 
 DevContext implements a sophisticated set of Cursor Rules that create an autonomous development environment. These rules guide Cursor's AI assistants in maintaining project scope alignment, incorporating up-to-date documentation, and implementing advanced task workflows.
 
+**Be on the lookout** for the DevContext Project Generator which is coming very soon and will create a COMPLETE set up for your project to literally 10x your development workflow.
+
 ### Key Rule Components
 
 #### 1. DevContext MCP Tools Usage Guide
@@ -139,7 +147,7 @@ The task workflow system enables:
 Download or copy and paste the .cursor/rules directory into your project. Next, copy and paste the contents of the `.cursorrules` file in your project root and paste it into your cursor settings rules (Cursor Settings -> Rules -> User Rules). You should also copy and paste the `.cursorrules` file into your main directory as well.
 
 3. **Customize Task Workflow** (Optional):
-   Create a `tasks.md` file in your project root to begin using the task management workflow.
+   Once the cursor rules are implemented, restart Cursor and proceed to ask it to create tasks for you based on whatever project idea you may have.
 
 ## Configuration Example
 
