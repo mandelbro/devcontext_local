@@ -724,82 +724,137 @@ async function processCodeChanges(conversationId, codeChanges) {
     };
 
     // If there are no code changes, return early
-    if (!codeChanges.length) {
+    if (!codeChanges || !codeChanges.length) {
       return result;
     }
 
-    // Process each code change using the knowledge processor
-    for (const change of codeChanges) {
-      try {
-        await KnowledgeProcessor.processCodeChange(change);
-        logMessage("DEBUG", `Processed code change for ${change.path}`);
-      } catch (processErr) {
-        logMessage("WARN", `Failed to process code change`, {
-          error: processErr.message,
-          path: change.path,
+    // Process code changes in parallel using Promise.allSettled for better error handling
+    // This will never reject, ensuring we always get results even if some changes fail
+    const processingPromises = codeChanges.map((change) => {
+      // Ensure filePath exists before processing
+      if (!change || !change.filePath) {
+        logMessage("WARN", "Received invalid code change object, skipping", {
+          change: JSON.stringify(change).substring(0, 100) + "...",
         });
-        // Continue with next change
+        return Promise.resolve({
+          success: false,
+          filePath: change?.filePath || "unknown",
+          error: "Invalid code change: missing filePath",
+        });
       }
+
+      return KnowledgeProcessor.processCodeChange(change)
+        .then((result) => {
+          if (result.success) {
+            logMessage("DEBUG", `Processed code change for ${change.filePath}`);
+          } else {
+            logMessage("WARN", `Failed to process code change`, {
+              error: result.error || "Unknown error",
+              path: change.filePath,
+            });
+          }
+          return result;
+        })
+        .catch((processErr) => {
+          // Extra safety - should never reach here as processCodeChange now handles errors
+          logMessage("WARN", `Unexpected error processing code change`, {
+            error: processErr.message,
+            path: change.filePath,
+          });
+          return {
+            success: false,
+            filePath: change.filePath,
+            error: processErr.message,
+          };
+        });
+    });
+
+    // Wait for all code changes to be processed
+    const processingResults = await Promise.allSettled(processingPromises);
+
+    // Extract the actual results and handle any rejected promises (should be none)
+    const processedResults = processingResults.map((promiseResult) => {
+      if (promiseResult.status === "fulfilled") {
+        return promiseResult.value;
+      } else {
+        // This shouldn't happen but handle it anyway
+        logMessage("ERROR", "Promise rejected during code change processing", {
+          reason: promiseResult.reason?.message || "Unknown error",
+        });
+        return {
+          success: false,
+          error: promiseResult.reason?.message || "Unknown error",
+        };
+      }
+    });
+
+    // Log a summary of the results
+    const successCount = processedResults.filter((r) => r.success).length;
+    const failureCount = processedResults.filter((r) => !r.success).length;
+
+    if (failureCount > 0) {
+      logMessage(
+        "WARN",
+        `${failureCount} of ${codeChanges.length} code changes failed processing`
+      );
+    } else {
+      logMessage(
+        "INFO",
+        `Successfully processed all ${codeChanges.length} code changes`
+      );
     }
 
     // Calculate new focus area based on code changes
-    const mostSignificantChange = codeChanges.reduce((prev, current) => {
-      // Simple heuristic: more changed lines = more significant
-      const prevChangedLines = prev.changedLines?.length || 0;
-      const currentChangedLines = current.changedLines?.length || 0;
-      return currentChangedLines > prevChangedLines ? current : prev;
-    }, codeChanges[0]);
-
-    // Set focus to the most significantly changed file
     try {
-      await ActiveContextManager.setActiveFocus(
-        "file",
-        mostSignificantChange.path
-      );
-      result.focusChanged = true;
-      result.newFocus = {
-        type: "file",
-        identifier: mostSignificantChange.path,
-      };
+      if (successCount > 0) {
+        const mostSignificantChange = codeChanges.reduce((prev, current) => {
+          // Simple heuristic: more changed lines = more significant
+          const prevChangedLines = prev.changedLines?.length || 0;
+          const currentChangedLines = current.changedLines?.length || 0;
+          return currentChangedLines > prevChangedLines ? current : prev;
+        }, codeChanges[0]);
 
-      logMessage("INFO", `Set focus to most significantly changed file`, {
-        path: mostSignificantChange.path,
-        changedLines: mostSignificantChange.changedLines?.length || "N/A",
-      });
-    } catch (focusErr) {
-      logMessage("WARN", `Failed to set focus to changed file`, {
-        error: focusErr.message,
-        path: mostSignificantChange.path,
-      });
-      // Continue without changing focus
-    }
+        // If we have a significant change, set it as the focus
+        if (mostSignificantChange) {
+          const newFocus = {
+            focus_type: "file",
+            identifier: mostSignificantChange.filePath,
+            description: `File ${mostSignificantChange.filePath} was modified`,
+          };
 
-    // Record code changes in timeline
-    try {
-      await TimelineManagerLogic.recordEvent(
-        "code_changes",
-        {
-          count: codeChanges.length,
-          paths: codeChanges.map((c) => c.path),
-        },
-        [], // No specific entity IDs
-        conversationId
-      );
-      logMessage("DEBUG", `Recorded code changes in timeline`);
-    } catch (timelineErr) {
-      logMessage("WARN", `Failed to record code changes in timeline`, {
-        error: timelineErr.message,
+          try {
+            // Update focus area
+            await FocusAreaManagerLogic.setFocusArea(newFocus);
+            result.focusChanged = true;
+            result.newFocus = newFocus;
+          } catch (focusError) {
+            logMessage("WARN", "Failed to update focus area", {
+              error: focusError.message,
+            });
+            // Continue without updating focus
+          }
+        }
+      }
+    } catch (focusError) {
+      // Ignore focus calculation errors
+      logMessage("WARN", "Error calculating focus area from code changes", {
+        error: focusError.message,
       });
-      // Non-critical error, continue
     }
 
     return result;
   } catch (error) {
-    logMessage("ERROR", `Error processing code changes`, {
+    logMessage("ERROR", `Failed to process code changes`, {
       error: error.message,
       conversationId,
     });
-    throw error; // Re-throw to be caught by the main handler
+
+    // Return a default result instead of throwing
+    return {
+      focusChanged: false,
+      newFocus: null,
+      error: error.message,
+    };
   }
 }
 

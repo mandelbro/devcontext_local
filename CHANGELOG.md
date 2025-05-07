@@ -5,6 +5,18 @@ All notable changes to the DevContext project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 1.0.7 - 2024-05-10
+
+### Fixed
+
+- Critical bug: Resolved issue with client closing during tool calls when processing multiple code changes
+- Added robust error handling and retry logic in database connection code with exponential backoff
+- Fixed column name mismatch in KnowledgeProcessor.js where the query was using "path" instead of "file_path"
+- Improved getEntitiesFromChangedFiles function to process files one at a time instead of using complex IN queries
+- Enhanced processCodeChanges function to use Promise.allSettled for better error handling
+- Modified migrateProjectPatternsTable function to use direct PRAGMA queries for better reliability
+- Updated handler function to be more resilient to errors and return partial success instead of failing completely
+
 ## 1.0.4 - 2024-05-08
 
 ### Enhanced

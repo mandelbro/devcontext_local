@@ -13,6 +13,7 @@ import { executeQuery } from "../db.js";
 import { tokenize, extractKeywords } from "./TextTokenizerLogic.js";
 import { addRelationship } from "./RelationshipContextManagerLogic.js";
 import { buildAST } from "./CodeStructureAnalyzerLogic.js";
+import { logMessage } from "../utils/logger.js";
 
 /**
  * Calculate SHA-256 hash of content
@@ -941,7 +942,7 @@ export async function indexCodeFile(filePath, fileContent, languageHint) {
 
       // If content hash matches, file is unchanged
       if (existingFile[0].content_hash === contentHash) {
-        console.log(`File ${filePath} is unchanged, skipping indexing`);
+        logMessage("info", `File ${filePath} is unchanged, skipping indexing`);
         return;
       }
 
@@ -1007,10 +1008,9 @@ export async function indexCodeFile(filePath, fileContent, languageHint) {
         codeEntities = extracted.entities;
         relationships = extracted.relationships;
       } else {
-        console.error(
-          `Error building AST for ${filePath}:`,
-          ast?.error || "Unknown error"
-        );
+        logMessage("error", `Error building AST for ${filePath}:`, {
+          error: ast?.error || "Unknown error",
+        });
         // Fallback to regex-based extraction for JS/TS with parsing errors
         codeEntities = extractEntitiesWithRegex(fileContent, language);
       }
@@ -1020,65 +1020,89 @@ export async function indexCodeFile(filePath, fileContent, languageHint) {
       codeEntities = extractEntitiesWithRegex(fileContent, language);
     }
 
-    // Store each code entity
+    // Prepare batch operations for better performance
+    const entityInsertPromises = [];
+    const keywordInsertPromises = [];
+
+    // Prepare entity batch values
     for (const entity of codeEntities) {
       const entityId = uuidv4();
+      entity.db_entity_id = entityId; // Store for relationship processing
 
-      // Convert custom_metadata to JSON string if it exists
       const customMetadataJson = entity.custom_metadata
         ? JSON.stringify(entity.custom_metadata)
         : null;
 
-      // Insert entity into database
-      await executeQuery(
-        `
-        INSERT INTO code_entities (
-          entity_id, parent_entity_id, file_path, entity_type, name, 
-          start_line, end_line, raw_content, language, custom_metadata
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `,
-        [
-          entityId,
-          fileEntityId, // All sub-entities have the file as parent by default
-          filePath,
-          entity.type,
-          entity.name,
-          entity.start_line,
-          entity.end_line,
-          entity.raw_content,
-          language,
-          customMetadataJson,
-        ]
+      // Add entity insert operation to batch
+      entityInsertPromises.push(
+        executeQuery(
+          `
+          INSERT INTO code_entities (
+            entity_id, parent_entity_id, file_path, entity_type, name, 
+            start_line, end_line, raw_content, language, custom_metadata
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `,
+          [
+            entityId,
+            fileEntityId, // All sub-entities have the file as parent by default
+            filePath,
+            entity.type,
+            entity.name,
+            entity.start_line,
+            entity.end_line,
+            entity.raw_content,
+            language,
+            customMetadataJson,
+          ]
+        )
       );
 
       // Process content for keywords
       const tokens = tokenize(entity.raw_content);
       const keywords = extractKeywords(tokens, 20, language);
 
-      // Store keywords
-      for (const keyword of keywords) {
-        await executeQuery(
-          `
-          INSERT INTO entity_keywords (
-            entity_id, keyword, term_frequency, weight, keyword_type
-          ) VALUES (?, ?, ?, ?, ?)
-        `,
-          [
-            entityId,
-            keyword.keyword,
-            keyword.score || 1.0,
-            keyword.score || 1.0,
-            "term",
-          ]
+      // Add keyword insert operations to batch
+      keywords.forEach((keyword) => {
+        keywordInsertPromises.push(
+          executeQuery(
+            `
+            INSERT INTO entity_keywords (
+              entity_id, keyword, term_frequency, weight, keyword_type
+            ) VALUES (?, ?, ?, ?, ?)
+            `,
+            [
+              entityId,
+              keyword.keyword,
+              keyword.score || 1.0,
+              keyword.score || 1.0,
+              "term",
+            ]
+          )
         );
-      }
-
-      // Store entity reference in memory for relationship processing
-      entity.db_entity_id = entityId;
+      });
     }
 
-    // Store parent-child relationships (e.g., method inside class, function inside function)
-    // This second pass is needed because all entities now have their db_entity_id
+    // Execute entity inserts in parallel
+    if (entityInsertPromises.length > 0) {
+      await Promise.all(entityInsertPromises);
+      logMessage(
+        "debug",
+        `Inserted ${entityInsertPromises.length} entities for ${filePath}`
+      );
+    }
+
+    // Execute keyword inserts in parallel
+    if (keywordInsertPromises.length > 0) {
+      await Promise.all(keywordInsertPromises);
+      logMessage(
+        "debug",
+        `Inserted ${keywordInsertPromises.length} keywords for ${filePath}`
+      );
+    }
+
+    // Process relationships
+    const relationshipPromises = [];
+
     for (const rel of relationships) {
       // Skip incomplete relationships
       if (!rel.source || !rel.target) continue;
@@ -1086,56 +1110,55 @@ export async function indexCodeFile(filePath, fileContent, languageHint) {
       const sourceId = rel.source.db_entity_id;
       const targetId = rel.target.db_entity_id;
 
-      // If relationship is "contains", update the parent_entity_id in code_entities
       if (rel.type === "contains" && sourceId && targetId) {
-        await executeQuery(
-          `
-          UPDATE code_entities
-          SET parent_entity_id = ?
-          WHERE entity_id = ?
-          `,
-          [sourceId, targetId]
+        relationshipPromises.push(
+          executeQuery(
+            `
+            UPDATE code_entities
+            SET parent_entity_id = ?
+            WHERE entity_id = ?
+            `,
+            [sourceId, targetId]
+          )
         );
-      }
-      // For other relationships (calls, extends, imports, etc.), use the relationship table
-      else if (sourceId && targetId) {
-        await addRelationship(
-          sourceId,
-          targetId,
-          rel.type,
-          1.0,
-          rel.metadata || {}
+      } else if (sourceId && targetId) {
+        relationshipPromises.push(
+          addRelationship(sourceId, targetId, rel.type, 1.0, rel.metadata || {})
         );
-      }
-      // For target entities that might be in other files (calls, extends)
-      else if (sourceId && !targetId && rel.target.name) {
-        // Try to find the target entity by name and type
-        const targetQuery = `
-          SELECT entity_id 
-          FROM code_entities 
-          WHERE name = ? AND entity_type = ?
-        `;
+      } else if (sourceId && !targetId && rel.target.name) {
+        relationshipPromises.push(
+          (async () => {
+            const targetEntity = await executeQuery(
+              `SELECT entity_id FROM code_entities WHERE name = ? AND entity_type = ?`,
+              [rel.target.name, rel.target.type]
+            );
 
-        const targetEntity = await executeQuery(targetQuery, [
-          rel.target.name,
-          rel.target.type,
-        ]);
-
-        if (targetEntity && targetEntity.length > 0) {
-          await addRelationship(
-            sourceId,
-            targetEntity[0].entity_id,
-            rel.type,
-            1.0,
-            rel.metadata || {}
-          );
-        }
+            if (targetEntity && targetEntity.length > 0) {
+              await addRelationship(
+                sourceId,
+                targetEntity[0].entity_id,
+                rel.type,
+                1.0,
+                rel.metadata || {}
+              );
+            }
+          })()
+        );
       }
     }
 
-    console.log(`Successfully indexed file ${filePath}`);
+    // Execute relationship operations in parallel
+    if (relationshipPromises.length > 0) {
+      await Promise.all(relationshipPromises);
+      logMessage(
+        "debug",
+        `Processed ${relationshipPromises.length} relationships for ${filePath}`
+      );
+    }
+
+    logMessage("info", `Successfully indexed file ${filePath}`);
   } catch (error) {
-    console.error(`Error indexing file ${filePath}:`, error);
+    logMessage("error", `Error indexing file ${filePath}:`, { error: error });
     throw error;
   }
 }
@@ -1164,6 +1187,15 @@ export async function indexCodeFile(filePath, fileContent, languageHint) {
  */
 export async function indexConversationMessage(message) {
   try {
+    logMessage("debug", "===== INDEX MESSAGE - START =====");
+    logMessage("debug", "Input parameters:", {
+      message_id: message.message_id,
+      conversation_id: message.conversation_id,
+      role: message.role,
+      content_length: message.content ? message.content.length : 0,
+      timestamp: message.timestamp,
+    });
+
     // Validate required message properties
     if (
       !message.message_id ||
@@ -1173,19 +1205,6 @@ export async function indexConversationMessage(message) {
     ) {
       throw new Error("Message object missing required properties");
     }
-
-    console.log("===== INDEX MESSAGE - START =====");
-    console.log("Input parameters:");
-    console.log("- message_id:", message.message_id);
-    console.log("- conversation_id:", message.conversation_id);
-    console.log("- role:", message.role);
-    console.log(
-      "- content:",
-      message.content &&
-        message.content.substring(0, 50) +
-          (message.content.length > 50 ? "..." : "")
-    );
-    console.log("- timestamp:", message.timestamp);
 
     // Convert arrays and objects to JSON strings for storage
     const relatedContextEntityIds = message.relatedContextEntityIds
@@ -1212,22 +1231,25 @@ export async function indexConversationMessage(message) {
       WHERE message_id = ?
     `;
 
-    console.log("Checking if message exists:", message.message_id);
+    logMessage("debug", "Checking if message exists:", {
+      message_id: message.message_id,
+    });
     const existingMessage = await executeQuery(existingMessageQuery, [
       message.message_id,
     ]);
 
-    console.log(
-      "Existing message check result:",
-      JSON.stringify(existingMessage)
-    );
+    logMessage("debug", "Existing message check result:", {
+      result: JSON.stringify(existingMessage),
+    });
 
     if (
       existingMessage &&
       existingMessage.rows &&
       existingMessage.rows.length > 0
     ) {
-      console.log("Updating existing message:", message.message_id);
+      logMessage("debug", "Updating existing message:", {
+        message_id: message.message_id,
+      });
       // Update existing message
       try {
         const updateQuery = `UPDATE conversation_history 
@@ -1251,19 +1273,23 @@ export async function indexConversationMessage(message) {
           message.message_id,
         ];
 
-        console.log("Update query parameters:", {
+        logMessage("debug", "Update query parameters:", {
           message_id: message.message_id,
           content_length: message.content ? message.content.length : 0,
         });
 
         const updateResult = await executeQuery(updateQuery, updateParams);
-        console.log("Message update result:", JSON.stringify(updateResult));
+        logMessage("debug", "Message update result:", {
+          result: JSON.stringify(updateResult),
+        });
       } catch (updateError) {
-        console.error("Update error:", updateError);
+        logMessage("error", "Update error:", { error: updateError });
         throw updateError;
       }
     } else {
-      console.log("Inserting new message:", message.message_id);
+      logMessage("debug", "Inserting new message:", {
+        message_id: message.message_id,
+      });
       // Insert new message
       try {
         const insertQuery = `INSERT INTO conversation_history (
@@ -1294,7 +1320,7 @@ export async function indexConversationMessage(message) {
           sentimentIndicators,
         ];
 
-        console.log("Insert query parameters:", {
+        logMessage("debug", "Insert query parameters:", {
           message_id: message.message_id,
           conversation_id: message.conversation_id,
           role: message.role,
@@ -1302,10 +1328,12 @@ export async function indexConversationMessage(message) {
         });
 
         const insertResult = await executeQuery(insertQuery, insertParams);
-        console.log("Message insert result:", JSON.stringify(insertResult));
+        logMessage("debug", "Message insert result:", {
+          result: JSON.stringify(insertResult),
+        });
       } catch (insertError) {
-        console.error("Insert error:", insertError);
-        console.error("Error stack:", insertError.stack);
+        logMessage("error", "Insert error:", { error: insertError });
+        logMessage("error", "Error stack:", { stack: insertError.stack });
         throw insertError;
       }
     }
@@ -1314,17 +1342,21 @@ export async function indexConversationMessage(message) {
     const tokens = tokenize(message.content);
     const keywords = extractKeywords(tokens);
 
-    console.log("===== INDEX MESSAGE - COMPLETE =====");
-    console.log("Successfully indexed message:", message.message_id);
+    logMessage("debug", "===== INDEX MESSAGE - COMPLETE =====");
+    logMessage("info", "Successfully indexed message:", {
+      message_id: message.message_id,
+    });
 
     return {
       messageId: message.message_id,
       keywords: keywords,
     };
   } catch (error) {
-    console.error("===== INDEX MESSAGE - ERROR =====");
-    console.error(`Error indexing message ${message?.message_id}:`, error);
-    console.error("Error stack:", error.stack);
+    logMessage("error", "===== INDEX MESSAGE - ERROR =====");
+    logMessage("error", `Error indexing message ${message?.message_id}:`, {
+      error: error.message,
+    });
+    logMessage("error", "Error stack:", { stack: error.stack });
     throw error;
   }
 }

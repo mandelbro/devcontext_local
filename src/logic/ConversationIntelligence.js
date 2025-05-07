@@ -12,6 +12,7 @@ import * as ContextIndexerLogic from "./ContextIndexerLogic.js";
 import * as ConversationSegmenter from "./ConversationSegmenter.js";
 import * as ConversationPurposeDetector from "./ConversationPurposeDetector.js";
 import * as ContextCompressorLogic from "./ContextCompressorLogic.js";
+import { logMessage } from "../utils/logger.js";
 
 /**
  * Records a message in the conversation history, extracting semantic markers and sentiment indicators.
@@ -38,21 +39,23 @@ export async function recordMessage(
     const timestamp = new Date().toISOString();
 
     // Print detailed input parameters for debugging
-    console.log("===== RECORD MESSAGE - START =====");
-    console.log("Input parameters:");
-    console.log("- message_id:", message_id);
-    console.log("- conversation_id:", conversationId);
-    console.log("- role:", role);
-    console.log(
+    logMessage("info", "===== RECORD MESSAGE - START =====");
+    logMessage("info", "Input parameters:");
+    logMessage("info", "- message_id:", message_id);
+    logMessage("info", "- conversation_id:", conversationId);
+    logMessage("info", "- role:", role);
+    logMessage(
+      "info",
       "- content:",
       messageContent &&
         messageContent.substring(0, 50) +
           (messageContent.length > 50 ? "..." : "")
     );
-    console.log("- timestamp:", timestamp);
-    console.log("- topic_segment_id:", topicSegmentId || "null");
-    console.log("- user_intent:", userIntent || "null");
-    console.log(
+    logMessage("info", "- timestamp:", timestamp);
+    logMessage("info", "- topic_segment_id:", topicSegmentId || "null");
+    logMessage("info", "- user_intent:", userIntent || "null");
+    logMessage(
+      "info",
       "- related_context_entity_ids:",
       JSON.stringify(relatedContextEntityIds || [])
     );
@@ -140,7 +143,7 @@ export async function recordMessage(
       sentiment_indicators: JSON.stringify(sentiment_indicators),
     };
 
-    console.log("Message object to be indexed:", {
+    logMessage("info", "Message object to be indexed:", {
       message_id: messageObject.message_id,
       conversation_id: messageObject.conversation_id,
       role: messageObject.role,
@@ -151,15 +154,15 @@ export async function recordMessage(
     // 4. Call ContextIndexerLogic.indexConversationMessage
     await ContextIndexerLogic.indexConversationMessage(messageObject);
 
-    console.log("===== RECORD MESSAGE - COMPLETE =====");
-    console.log("Successfully recorded message with ID:", message_id);
+    logMessage("info", "===== RECORD MESSAGE - COMPLETE =====");
+    logMessage("info", "Successfully recorded message with ID:", message_id);
 
     // 5. Return the message_id
     return message_id;
   } catch (error) {
-    console.error("===== RECORD MESSAGE - ERROR =====");
-    console.error("Failed to record message:", error);
-    console.error("Error stack:", error.stack);
+    logMessage("error", "===== RECORD MESSAGE - ERROR =====");
+    logMessage("error", "Failed to record message:", { error: error.message });
+    logMessage("error", "Error stack:", { stack: error.stack });
     throw new Error("Failed to record message: " + error.message);
   }
 }
@@ -210,7 +213,7 @@ export async function getConversationTopics(
 
     // Check if result has rows property and it's not empty
     if (!result || !result.rows || result.rows.length === 0) {
-      console.log(`No topics found for conversation: ${conversationId}`);
+      logMessage("info", `No topics found for conversation: ${conversationId}`);
       return [];
     }
 
@@ -225,14 +228,17 @@ export async function getConversationTopics(
           : [];
         newTopic.keywords = topic.keywords ? JSON.parse(topic.keywords) : [];
       } catch (err) {
-        console.warn(`Error parsing JSON fields in topic: ${err.message}`);
+        logMessage(
+          "warn",
+          `Error parsing JSON fields in topic: ${err.message}`
+        );
         newTopic.primary_entities = [];
         newTopic.keywords = [];
       }
       return newTopic;
     });
   } catch (error) {
-    console.warn(`Failed to retrieve conversation topics`, {
+    logMessage("warn", `Failed to retrieve conversation topics`, {
       error: error.message,
       conversationId,
     });
@@ -437,7 +443,10 @@ export async function summarizeConversation(conversationId) {
     !Array.isArray(messages.rows) ||
     messages.rows.length === 0
   ) {
-    console.warn(`No valid messages found for conversation ${conversationId}`);
+    logMessage(
+      "warn",
+      `No valid messages found for conversation ${conversationId}`
+    );
     return "";
   }
 
@@ -495,7 +504,7 @@ export async function initializeConversation(conversationId, initialQuery) {
         "start_conversation",
       ]);
 
-      console.log(`User query recorded with ID: ${userMessageId}`);
+      logMessage("info", `User query recorded with ID: ${userMessageId}`);
     }
 
     // Then create the system message to record conversation initialization
@@ -546,9 +555,11 @@ export async function initializeConversation(conversationId, initialQuery) {
       }
     );
 
-    console.log(`Conversation initialized with ID: ${conversationId}`);
+    logMessage("info", `Conversation initialized with ID: ${conversationId}`);
   } catch (error) {
-    console.error("Error initializing conversation:", error);
+    logMessage("error", "Error initializing conversation:", {
+      error: error.message,
+    });
     throw new Error("Failed to initialize conversation: " + error.message);
   }
 }
@@ -597,7 +608,10 @@ export async function getConversationHistory(
 
     // Check if results has a rows property and it's an array
     if (!results || !results.rows || !Array.isArray(results.rows)) {
-      console.warn("No valid rows returned from conversation history query");
+      logMessage(
+        "warn",
+        "No valid rows returned from conversation history query"
+      );
       return [];
     }
 
@@ -637,10 +651,11 @@ export async function getConversationHistory(
 
         return mappedMessage;
       } catch (err) {
-        console.error(
-          "Error parsing JSON fields in conversation message:",
-          err
+        logMessage(
+          "error",
+          "Error parsing JSON fields in conversation message:"
         );
+        logMessage("error", err);
         return {
           messageId: message.message_id,
           conversationId: message.conversation_id,
@@ -657,10 +672,11 @@ export async function getConversationHistory(
       }
     });
   } catch (error) {
-    console.error(
-      `Error getting conversation history for ${conversationId}:`,
-      error
+    logMessage(
+      "error",
+      `Error getting conversation history for ${conversationId}:`
     );
+    logMessage("error", error);
     return [];
   }
 }
@@ -693,10 +709,11 @@ export async function getConversationPurpose(conversationId) {
 
     return activePurpose;
   } catch (error) {
-    console.error(
-      `Error getting conversation purpose for ${conversationId}:`,
-      error
+    logMessage(
+      "error",
+      `Error getting conversation purpose for ${conversationId}:`
     );
+    logMessage("error", error);
 
     // Default response in case of error
     return {
@@ -746,7 +763,7 @@ export async function getRecentMessages(conversationId, count = 5) {
 
     // Check if results has a rows property and it's an array
     if (!results || !results.rows || !Array.isArray(results.rows)) {
-      console.warn("No valid rows returned from recent messages query");
+      logMessage("warn", "No valid rows returned from recent messages query");
       return [];
     }
 
@@ -786,10 +803,11 @@ export async function getRecentMessages(conversationId, count = 5) {
 
         return mappedMessage;
       } catch (err) {
-        console.error(
-          "Error parsing JSON fields in conversation message:",
-          err
+        logMessage(
+          "error",
+          "Error parsing JSON fields in conversation message:"
         );
+        logMessage("error", err);
         return {
           messageId: message.message_id,
           conversationId: message.conversation_id,
@@ -806,10 +824,8 @@ export async function getRecentMessages(conversationId, count = 5) {
       }
     });
   } catch (error) {
-    console.error(
-      `Error getting recent messages for ${conversationId}:`,
-      error
-    );
+    logMessage("error", `Error getting recent messages for ${conversationId}:`);
+    logMessage("error", error);
     return [];
   }
 }

@@ -16,24 +16,45 @@ let dbClient = null;
  * @throws {Error} If database URL or auth token is missing
  */
 export const getDbClient = () => {
+  // Check if we're in MCP mode - never log in MCP mode
+  const inMcpMode = process.env.MCP_MODE === "true";
+
   if (dbClient) {
     return dbClient;
   }
 
   if (!TURSO_DATABASE_URL) {
-    throw new Error(
-      "TURSO_DATABASE_URL is not defined in environment variables"
-    );
+    const errorMsg =
+      "TURSO_DATABASE_URL is not defined in environment variables";
+    if (inMcpMode) {
+      // In MCP mode, don't throw with a message that could be logged
+      throw new Error();
+    } else {
+      throw new Error(errorMsg);
+    }
   }
 
   if (!TURSO_AUTH_TOKEN) {
-    throw new Error("TURSO_AUTH_TOKEN is not defined in environment variables");
+    const errorMsg = "TURSO_AUTH_TOKEN is not defined in environment variables";
+    if (inMcpMode) {
+      // In MCP mode, don't throw with a message that could be logged
+      throw new Error();
+    } else {
+      throw new Error(errorMsg);
+    }
   }
 
   dbClient = createClient({
     url: TURSO_DATABASE_URL,
     authToken: TURSO_AUTH_TOKEN,
   });
+
+  // Only log in non-MCP mode
+  if (!inMcpMode) {
+    logMessage("info", "Database client created", {
+      url: TURSO_DATABASE_URL.substring(0, 20) + "...", // Don't log full URL for security
+    });
+  }
 
   return dbClient;
 };
@@ -45,11 +66,50 @@ export const getDbClient = () => {
  * @throws {Error} If connection fails
  */
 export const testDbConnection = async (client = null) => {
+  // Check if we're in MCP mode - never log in MCP mode
+  const inMcpMode = process.env.MCP_MODE === "true";
+
   try {
-    const dbClient = client || getDbClient();
-    await dbClient.execute("SELECT 1");
-    return true;
+    // Maximum number of retry attempts
+    const maxRetries = 3;
+    let retryCount = 0;
+
+    while (retryCount < maxRetries) {
+      try {
+        const dbClient = client || getDbClient();
+        await dbClient.execute("SELECT 1");
+        return true;
+      } catch (connError) {
+        retryCount++;
+
+        // If we've reached max retries, handle the error
+        if (retryCount >= maxRetries) {
+          // In MCP mode, just return false instead of throwing
+          if (inMcpMode) {
+            return false;
+          }
+          throw new Error(
+            `Database connection test failed: ${connError.message}`
+          );
+        }
+
+        // Wait before retrying (exponential backoff)
+        const waitTime = Math.pow(2, retryCount) * 100;
+        await new Promise((resolve) => setTimeout(resolve, waitTime));
+
+        // Reset client for retry if we're using the singleton
+        if (!client) {
+          dbClient = null;
+        }
+      }
+    }
+
+    return true; // Should never reach here but just in case
   } catch (error) {
+    // In MCP mode, just return false instead of throwing
+    if (inMcpMode) {
+      return false;
+    }
     throw new Error(`Database connection test failed: ${error.message}`);
   }
 };
@@ -62,156 +122,233 @@ export const testDbConnection = async (client = null) => {
  * @throws {Error} If query execution fails
  */
 export const executeQuery = async (sqlQuery, args = []) => {
+  // Strict MCP mode check to prevent any possible logging
+  const inMcpMode = process.env.MCP_MODE === "true";
+
   try {
-    // Log the query for debugging
-    console.log("DB - EXECUTING QUERY:", {
-      sql: sqlQuery.substring(0, 150) + (sqlQuery.length > 150 ? "..." : ""),
-      args:
-        args.length > 0
-          ? JSON.stringify(args.slice(0, 3)) + (args.length > 3 ? "..." : "")
-          : "[]",
-    });
-
-    const client = getDbClient();
-    const result = await client.execute({
-      sql: sqlQuery,
-      args: args,
-    });
-
-    // Log the result for debugging
-    console.log("DB - QUERY RESULT:", {
-      rowCount: result.rows?.length || 0,
-      rowsPreview:
-        result.rows?.length > 0
-          ? JSON.stringify(result.rows[0]).substring(0, 100) + "..."
-          : "No rows",
-      affectedRows: result.rowsAffected,
-    });
-
-    return result;
-  } catch (error) {
-    console.error("DB - QUERY ERROR:", {
-      message: error.message,
-      query: sqlQuery.substring(0, 150),
-      args: args.length > 0 ? JSON.stringify(args.slice(0, 3)) : "[]",
-    });
-
-    throw new Error(
-      `Query execution failed: ${error.message}\nQuery: ${sqlQuery}`
-    );
-  }
-};
-
-/**
- * Check if a column exists in a table
- * @param {string} tableName - Name of the table
- * @param {string} columnName - Name of the column to check
- * @returns {Promise<boolean>} True if the column exists
- */
-async function columnExists(tableName, columnName) {
-  try {
-    if (!tableName || !columnName) {
-      logMessage("error", "Invalid table or column name provided");
-      return false;
+    // Only log if not in MCP mode - double check to be absolutely sure
+    if (!inMcpMode) {
+      // Log the query for debugging
+      logMessage("debug", "DB - EXECUTING QUERY", {
+        sql: sqlQuery.substring(0, 150) + (sqlQuery.length > 150 ? "..." : ""),
+        args:
+          args.length > 0
+            ? JSON.stringify(args.slice(0, 3)) + (args.length > 3 ? "..." : "")
+            : "[]",
+      });
     }
 
-    const client = getDbClient();
-    const result = await client.execute({
-      sql: `PRAGMA table_info(${tableName})`,
-    });
+    // Maximum number of retry attempts
+    const maxRetries = 3;
+    let retryCount = 0;
+    let result;
 
-    // Check if result and rows are valid
-    if (!result || !result.rows || result.rows.length === 0) {
-      logMessage("warn", `No table info found for ${tableName}`);
-      return false;
-    }
+    while (retryCount < maxRetries) {
+      try {
+        const client = getDbClient();
+        result = await client.execute({
+          sql: sqlQuery,
+          args: args,
+        });
+        break; // If query succeeds, exit the retry loop
+      } catch (queryError) {
+        retryCount++;
 
-    // Check each row for the column name
-    for (const row of result.rows) {
-      if (row && row.name === columnName) {
-        return true;
+        // Check if this is a connection error that can be retried
+        const isConnectionError =
+          queryError.message?.includes("connection") ||
+          queryError.message?.includes("timeout") ||
+          queryError.message?.includes("closed");
+
+        // If we've reached max retries or it's not a connection error, rethrow
+        if (retryCount >= maxRetries || !isConnectionError) {
+          throw queryError;
+        }
+
+        // Wait before retrying (exponential backoff)
+        const waitTime = Math.pow(2, retryCount) * 100;
+        await new Promise((resolve) => setTimeout(resolve, waitTime));
+
+        // Reset client for retry
+        dbClient = null;
       }
     }
 
-    logMessage("debug", `Column ${columnName} not found in ${tableName}`);
-    return false;
+    // Only log if not in MCP mode - double check to be absolutely sure
+    if (!inMcpMode) {
+      // Log the result for debugging
+      logMessage("debug", "DB - QUERY RESULT", {
+        rowCount: result.rows?.length || 0,
+        rowsPreview:
+          result.rows?.length > 0
+            ? JSON.stringify(result.rows[0]).substring(0, 100) + "..."
+            : "No rows",
+        affectedRows: result.rowsAffected || 0,
+      });
+    }
+
+    return result;
   } catch (error) {
-    logMessage("error", `Error checking if column exists: ${error.message}`);
-    return false;
+    // Only log if not in MCP mode - double check to be absolutely sure
+    if (!inMcpMode) {
+      logMessage("error", "DB - QUERY ERROR", {
+        message: error.message,
+        query: sqlQuery.substring(0, 150),
+        args: args.length > 0 ? JSON.stringify(args.slice(0, 3)) : "[]",
+      });
+    }
+
+    // In MCP mode, throw a plain error without any message to prevent logging
+    if (inMcpMode) {
+      throw new Error();
+    } else {
+      throw new Error(
+        `Query execution failed: ${error.message}\nQuery: ${sqlQuery}`
+      );
+    }
   }
-}
+};
 
 /**
  * Migrate the project_patterns table to add the language column if it doesn't exist
  * @returns {Promise<void>}
  */
 async function migrateProjectPatternsTable() {
+  // Silent operation in MCP mode - triple check to be safe
+  const inMcpMode = process.env.MCP_MODE === "true";
+
   try {
-    // First check if the table exists
-    const tableExistsQuery = await executeQuery(`
-      SELECT name FROM sqlite_master
-      WHERE type='table' AND name='project_patterns'
-    `);
+    // First check if the table exists - use a more robust approach with error handling
+    let tableExists = false;
+    try {
+      const tableExistsQuery = await executeQuery(`
+        SELECT name FROM sqlite_master
+        WHERE type='table' AND name='project_patterns'
+      `);
 
-    const tableExists =
-      tableExistsQuery &&
-      tableExistsQuery.rows &&
-      tableExistsQuery.rows.length > 0;
+      tableExists =
+        tableExistsQuery &&
+        tableExistsQuery.rows &&
+        tableExistsQuery.rows.length > 0;
+    } catch (tableCheckError) {
+      // If error checking table existence, assume table doesn't exist
+      if (!inMcpMode) {
+        logMessage(
+          "warn",
+          `Error checking table existence: ${tableCheckError.message}`
+        );
+      }
+      return; // Exit early, nothing to migrate
+    }
 
+    // If table doesn't exist, nothing to migrate
     if (!tableExists) {
-      logMessage(
-        "info",
-        "project_patterns table doesn't exist yet, skipping migration"
-      );
+      if (!inMcpMode) {
+        logMessage(
+          "info",
+          "project_patterns table doesn't exist yet, skipping migration"
+        );
+      }
       return;
     }
 
-    // Then check if the language column exists
-    const hasLanguageColumn = await columnExists(
-      "project_patterns",
-      "language"
-    );
+    // Check if the language column exists directly with a query
+    // This avoids relying on the columnExists function that might get minified
+    let hasLanguageColumn = false;
+    try {
+      const columnCheckQuery = await executeQuery(`
+        PRAGMA table_info(project_patterns)
+      `);
 
-    if (!hasLanguageColumn) {
-      logMessage("info", "Adding language column to project_patterns table");
-
-      try {
-        // Add the language column to the table
-        await executeQuery(
-          "ALTER TABLE project_patterns ADD COLUMN language TEXT"
+      if (columnCheckQuery && columnCheckQuery.rows) {
+        // Check each row for the language column
+        for (const row of columnCheckQuery.rows) {
+          if (row && row.name === "language") {
+            hasLanguageColumn = true;
+            break;
+          }
+        }
+      }
+    } catch (columnCheckError) {
+      // If error checking column existence, be safe and skip migration
+      if (!inMcpMode) {
+        logMessage(
+          "warn",
+          `Error checking column existence: ${columnCheckError.message}`
         );
+      }
+      return; // Exit early, skip migration on error
+    }
 
+    // If language column already exists, nothing to do
+    if (hasLanguageColumn) {
+      if (!inMcpMode) {
+        logMessage(
+          "debug",
+          "Language column already exists in project_patterns table"
+        );
+      }
+      return;
+    }
+
+    // Only reach here if table exists and column doesn't exist
+    if (!inMcpMode) {
+      logMessage("info", "Adding language column to project_patterns table");
+    }
+
+    try {
+      // Add the language column to the table - wrap in try/catch
+      await executeQuery(
+        "ALTER TABLE project_patterns ADD COLUMN language TEXT"
+      );
+
+      if (!inMcpMode) {
         logMessage(
           "info",
           "Successfully added language column to project_patterns table"
         );
-      } catch (alterError) {
-        // If the column already exists, SQLite will throw an error
-        if (alterError.message.includes("duplicate column")) {
-          logMessage("info", "Language column already exists, skipping");
-        } else {
-          // For other errors, rethrow
-          throw alterError;
-        }
       }
+    } catch (alterError) {
+      // Handle column already exists error - SQLite specific
+      if (
+        alterError.message &&
+        alterError.message.includes("duplicate column")
+      ) {
+        if (!inMcpMode) {
+          logMessage("info", "Language column already exists, skipping");
+        }
+      } else {
+        // For other errors in non-MCP mode, log warning but don't fail
+        if (!inMcpMode) {
+          logMessage(
+            "warn",
+            `Error adding language column: ${alterError.message}`
+          );
+        }
+        return; // Skip index creation on error
+      }
+    }
 
-      // Create index for the language column if needed
-      try {
-        await executeQuery(
-          "CREATE INDEX IF NOT EXISTS idx_project_patterns_language ON project_patterns(language)"
-        );
+    // Create index for the language column if needed - with separate error handling
+    try {
+      await executeQuery(
+        "CREATE INDEX IF NOT EXISTS idx_project_patterns_language ON project_patterns(language)"
+      );
+      if (!inMcpMode) {
         logMessage("info", "Created index for language column");
-      } catch (indexError) {
+      }
+    } catch (indexError) {
+      // Log index creation error but don't fail - not critical
+      if (!inMcpMode) {
         logMessage("warn", `Error creating index: ${indexError.message}`);
       }
-    } else {
-      logMessage(
-        "debug",
-        "Language column already exists in project_patterns table"
-      );
     }
   } catch (error) {
-    throw new Error(`Migration failed: ${error.message}`);
+    // In MCP mode, don't throw or log errors - just silently fail
+    if (!inMcpMode) {
+      // Log error but don't throw - make migration non-fatal
+      logMessage("warn", `Migration warning: ${error.message}`);
+    }
   }
 }
 
@@ -222,15 +359,22 @@ async function migrateProjectPatternsTable() {
  * @returns {Promise<boolean>} True if schema initialization was successful
  */
 export const initializeDatabaseSchema = async () => {
+  // Check if we're in MCP mode - triple check to prevent any logging
+  const inMcpMode = process.env.MCP_MODE === "true";
+
   try {
     const client = getDbClient();
     let success = true;
 
     // First, check if we need to migrate the project_patterns table by adding the language column
+    // Wrap in try/catch and continue regardless of migration outcome
     try {
       await migrateProjectPatternsTable();
     } catch (migrationError) {
-      logMessage("warn", `Migration warning: ${migrationError.message}`);
+      // Completely ignore migration errors in MCP mode
+      if (!inMcpMode) {
+        logMessage("warn", `Migration warning: ${migrationError.message}`);
+      }
       // Continue with schema initialization, migration error is not fatal
     }
 
@@ -513,21 +657,27 @@ export const initializeDatabaseSchema = async () => {
       try {
         await client.execute(statement);
       } catch (error) {
-        // Log error but continue with other statements
-        logMessage(
-          "error",
-          `Error executing schema statement: ${error.message}`
-        );
-        logMessage(
-          "error",
-          `Failed statement: ${statement.substring(0, 100)}...`
-        );
+        // Only log error in non-MCP mode
+        if (!inMcpMode) {
+          logMessage(
+            "error",
+            `Error executing schema statement: ${error.message}`
+          );
+          logMessage(
+            "error",
+            `Failed statement: ${statement.substring(0, 100)}...`
+          );
+        }
         success = false;
       }
     }
 
     return success;
   } catch (error) {
+    if (inMcpMode) {
+      // In MCP mode, return false silently instead of throwing
+      return false;
+    }
     throw new Error(`Database schema initialization failed: ${error.message}`);
   }
 };

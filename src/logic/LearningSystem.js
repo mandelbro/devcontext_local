@@ -11,6 +11,7 @@ import * as ConversationIntelligence from "./ConversationIntelligence.js";
 import * as GlobalPatternRepository from "./GlobalPatternRepository.js";
 import * as TextTokenizerLogic from "./TextTokenizerLogic.js";
 import { v4 as uuidv4 } from "uuid";
+import { logMessage } from "../utils/logger.js";
 
 /**
  * Performs background analysis of the entire project's codebase for patterns.
@@ -19,9 +20,7 @@ import { v4 as uuidv4 } from "uuid";
  */
 export async function extractPatternsFromCode() {
   try {
-    console.log(
-      "[LearningSystem] Starting pattern extraction from codebase..."
-    );
+    logMessage("info", "[LearningSystem] Starting code pattern extraction...");
     // 1. Fetch all code entities of interest (functions, classes, methods)
     const query = `
       SELECT * FROM code_entities
@@ -30,12 +29,14 @@ export async function extractPatternsFromCode() {
     `;
     const entities = await executeQuery(query, []);
     if (!entities || entities.length === 0) {
-      console.log(
+      logMessage(
+        "info",
         "[LearningSystem] No code entities found for pattern extraction."
       );
       return;
     }
-    console.log(
+    logMessage(
+      "info",
       `[LearningSystem] Analyzing ${entities.length} code entities...`
     );
 
@@ -53,16 +54,18 @@ export async function extractPatternsFromCode() {
               await SemanticPatternRecognizerLogic.addPatternToRepository(
                 pattern
               );
-              console.log(
+              logMessage(
+                "info",
                 `[LearningSystem] Pattern stored: ${pattern.name || pattern.id}`
               );
             }
           }
         }
       } catch (entityErr) {
-        console.warn(
+        logMessage(
+          "warn",
           `[LearningSystem] Error analyzing entity ${entity.id}:`,
-          entityErr
+          { error: entityErr.message }
         );
       }
     }
@@ -87,31 +90,35 @@ export async function extractPatternsFromCode() {
             await SemanticPatternRecognizerLogic.addPatternToRepository(
               groupPattern
             );
-            console.log(
+            logMessage(
+              "info",
               `[LearningSystem] Group pattern stored: ${
                 groupPattern.name || groupPattern.id
               }`
             );
           }
         } catch (groupErr) {
-          console.warn(
+          logMessage(
+            "warn",
             "[LearningSystem] Error generating pattern from group:",
-            groupErr
+            { error: groupErr.message }
           );
         }
       }
     } catch (groupingErr) {
-      console.warn(
+      logMessage(
+        "warn",
         "[LearningSystem] Error finding structurally similar entity groups:",
-        groupingErr
+        { error: groupingErr.message }
       );
     }
 
-    console.log("[LearningSystem] Pattern extraction complete.");
+    logMessage("info", "[LearningSystem] Pattern extraction complete.");
   } catch (error) {
-    console.error(
+    logMessage(
+      "error",
       "[LearningSystem] Fatal error during pattern extraction:",
-      error
+      { error: error.message }
     );
   }
 }
@@ -123,7 +130,10 @@ export async function extractPatternsFromCode() {
  */
 export async function identifyUsagePatterns() {
   try {
-    console.log("[LearningSystem] Starting usage pattern identification...");
+    logMessage(
+      "info",
+      "[LearningSystem] Starting usage pattern identification..."
+    );
     // 1. Fetch timeline events (limit for performance)
     const timelineQuery = `
       SELECT conversation_id, type, timestamp
@@ -134,7 +144,8 @@ export async function identifyUsagePatterns() {
     `;
     const events = await executeQuery(timelineQuery, []);
     if (!events || events.length === 0) {
-      console.log(
+      logMessage(
+        "info",
         "[LearningSystem] No timeline events found for usage pattern analysis."
       );
       return;
@@ -200,23 +211,29 @@ export async function identifyUsagePatterns() {
             pattern.use_count,
           ]
         );
-        console.log(`[LearningSystem] Usage pattern stored: ${pattern.name}`);
+        logMessage(
+          "info",
+          `[LearningSystem] Usage pattern stored: ${pattern.name}`
+        );
       } catch (insertErr) {
         // Ignore duplicate errors, log others
         if (!/UNIQUE|duplicate/i.test(insertErr.message)) {
-          console.warn(
-            "[LearningSystem] Error storing usage pattern:",
-            insertErr
-          );
+          logMessage("warn", "[LearningSystem] Error storing usage pattern:", {
+            error: insertErr.message,
+          });
         }
       }
     }
 
-    console.log("[LearningSystem] Usage pattern identification complete.");
+    logMessage(
+      "info",
+      "[LearningSystem] Usage pattern identification complete."
+    );
   } catch (error) {
-    console.error(
+    logMessage(
+      "error",
       "[LearningSystem] Fatal error during usage pattern identification:",
-      error
+      { error: error.message }
     );
   }
 }
@@ -229,14 +246,16 @@ export async function identifyUsagePatterns() {
  */
 export async function analyzePatternsAroundMilestone(milestoneSnapshotId) {
   try {
-    console.log(
+    logMessage(
+      "info",
       `[LearningSystem] Analyzing patterns around milestone: ${milestoneSnapshotId}`
     );
     // 1. Retrieve the context_snapshots record
     const snapshotQuery = `SELECT * FROM context_states WHERE milestone_id = ?`;
     const snapshots = await executeQuery(snapshotQuery, [milestoneSnapshotId]);
     if (!snapshots || !snapshots.rows || snapshots.rows.length === 0) {
-      console.warn(
+      logMessage(
+        "warn",
         `[LearningSystem] No context snapshot found for milestone ${milestoneSnapshotId}`
       );
       return;
@@ -244,7 +263,8 @@ export async function analyzePatternsAroundMilestone(milestoneSnapshotId) {
 
     const snapshot = snapshots.rows[0];
     if (!snapshot) {
-      console.warn(
+      logMessage(
+        "warn",
         `[LearningSystem] Empty snapshot data for milestone ${milestoneSnapshotId}`
       );
       return;
@@ -257,7 +277,8 @@ export async function analyzePatternsAroundMilestone(milestoneSnapshotId) {
 
     // Check if we have a valid conversation_id
     if (!conversation_id) {
-      console.warn(
+      logMessage(
+        "warn",
         `[LearningSystem] No conversation_id in snapshot for milestone ${milestoneSnapshotId}`
       );
       return;
@@ -285,7 +306,8 @@ export async function analyzePatternsAroundMilestone(milestoneSnapshotId) {
 
     // Only proceed if we have events
     if (!events || !events.rows || events.rows.length === 0) {
-      console.log(
+      logMessage(
+        "info",
         `[LearningSystem] No events found in the time window for milestone ${milestoneSnapshotId}`
       );
       return;
@@ -363,40 +385,42 @@ export async function analyzePatternsAroundMilestone(milestoneSnapshotId) {
     }
 
     // 5. Log insights
-    console.log(
+    logMessage(
+      "info",
       `[LearningSystem] Milestone ${milestoneSnapshotId} context analysis:`
     );
-    console.log(
-      "  Most accessed code entities:",
-      Object.entries(entityAccessCounts)
+    logMessage("info", "  Most accessed code entities:", {
+      entities: Object.entries(entityAccessCounts)
         .sort((a, b) => b[1] - a[1])
-        .slice(0, 5)
-    );
-    console.log("  Most common search queries:", searchQueries.slice(0, 5));
-    console.log(
-      "  Most discussed topics:",
-      Object.entries(topicCounts)
+        .slice(0, 5),
+    });
+    logMessage("info", "  Most common search queries:", {
+      queries: searchQueries.slice(0, 5),
+    });
+    logMessage("info", "  Most discussed topics:", {
+      topics: Object.entries(topicCounts)
         .sort((a, b) => b[1] - a[1])
-        .slice(0, 3)
-    );
-    console.log(
-      "  Most discussed purposes:",
-      Object.entries(purposeCounts)
+        .slice(0, 3),
+    });
+    logMessage("info", "  Most discussed purposes:", {
+      purposes: Object.entries(purposeCounts)
         .sort((a, b) => b[1] - a[1])
-        .slice(0, 3)
-    );
+        .slice(0, 3),
+    });
 
     // 6. Optionally reinforce patterns in project_patterns (not implemented in detail here)
     // This could update utility_score/confidence_score for patterns related to these entities/topics
     // ...
 
-    console.log(
+    logMessage(
+      "info",
       `[LearningSystem] Analysis around milestone ${milestoneSnapshotId} complete.`
     );
   } catch (error) {
-    console.error(
+    logMessage(
+      "error",
       `[LearningSystem] Error analyzing patterns around milestone ${milestoneSnapshotId}:`,
-      error
+      { error: error.message }
     );
   }
 }
@@ -410,7 +434,8 @@ export async function analyzePatternsAroundMilestone(milestoneSnapshotId) {
  */
 export async function analyzeConversationForPatterns(conversationId, outcome) {
   try {
-    console.log(
+    logMessage(
+      "info",
       `[LearningSystem] Analyzing conversation ${conversationId} with outcome: ${outcome}`
     );
 
@@ -418,13 +443,15 @@ export async function analyzeConversationForPatterns(conversationId, outcome) {
     const conversationHistory =
       await ConversationIntelligence.getConversationHistory(conversationId);
     if (!conversationHistory || conversationHistory.length === 0) {
-      console.log(
+      logMessage(
+        "info",
         `[LearningSystem] No conversation history found for ${conversationId}`
       );
       return;
     }
 
-    console.log(
+    logMessage(
+      "info",
       `[LearningSystem] Retrieved ${conversationHistory.length} messages for analysis`
     );
 
@@ -443,13 +470,15 @@ export async function analyzeConversationForPatterns(conversationId, outcome) {
     }
 
     if (codeEntityIds.size === 0) {
-      console.log(
+      logMessage(
+        "info",
         `[LearningSystem] No code entities found in conversation ${conversationId}`
       );
       return;
     }
 
-    console.log(
+    logMessage(
+      "info",
       `[LearningSystem] Found ${codeEntityIds.size} unique code entities to analyze for patterns`
     );
 
@@ -464,7 +493,8 @@ export async function analyzeConversationForPatterns(conversationId, outcome) {
       }
     }
 
-    console.log(
+    logMessage(
+      "info",
       `[LearningSystem] Retrieved ${codeEntities.length} code entities for pattern recognition`
     );
 
@@ -476,7 +506,8 @@ export async function analyzeConversationForPatterns(conversationId, outcome) {
           await SemanticPatternRecognizerLogic.recognizePatterns(entity);
 
         if (patterns && patterns.length > 0) {
-          console.log(
+          logMessage(
+            "info",
             `[LearningSystem] Found ${patterns.length} patterns in entity ${entity.id}`
           );
 
@@ -487,7 +518,8 @@ export async function analyzeConversationForPatterns(conversationId, outcome) {
               await SemanticPatternRecognizerLogic.addPatternToRepository(
                 pattern
               );
-              console.log(
+              logMessage(
+                "info",
                 `[LearningSystem] Added pattern ${
                   pattern.id || pattern.name
                 } to repository`
@@ -496,9 +528,10 @@ export async function analyzeConversationForPatterns(conversationId, outcome) {
           }
         }
       } catch (error) {
-        console.warn(
+        logMessage(
+          "warn",
           `[LearningSystem] Error analyzing entity ${entity.id}:`,
-          error
+          { error: error.message }
         );
       }
     }
@@ -521,7 +554,8 @@ export async function analyzeConversationForPatterns(conversationId, outcome) {
       const patternIds = await executeQuery(patternQuery, [conversationId]);
 
       if (patternIds && patternIds.length > 0) {
-        console.log(
+        logMessage(
+          "info",
           `[LearningSystem] Reinforcing ${patternIds.length} patterns based on successful outcome`
         );
 
@@ -531,20 +565,23 @@ export async function analyzeConversationForPatterns(conversationId, outcome) {
             "confirmation",
             { conversationId }
           );
-          console.log(
+          logMessage(
+            "info",
             `[LearningSystem] Reinforced pattern ${pattern_id} based on successful outcome`
           );
         }
       }
     }
 
-    console.log(
+    logMessage(
+      "info",
       `[LearningSystem] Completed pattern analysis for conversation ${conversationId}`
     );
   } catch (error) {
-    console.error(
+    logMessage(
+      "error",
       `[LearningSystem] Error analyzing conversation patterns:`,
-      error
+      { error: error.message }
     );
   }
 }
@@ -562,7 +599,8 @@ export async function promoteSessionPatternsToGlobal(
   filterOptions = {}
 ) {
   try {
-    console.log(
+    logMessage(
+      "info",
       `[LearningSystem] Promoting session patterns to global for session ${sessionId}`
     );
 

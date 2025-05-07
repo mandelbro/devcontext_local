@@ -32,36 +32,129 @@ import { executeQuery } from "../db.js";
  * @returns {Promise<Object>} Result of processing the code change
  */
 export async function processCodeChange(change) {
+  const inMcpMode = process.env.MCP_MODE === "true";
+
   if (!change || !change.filePath || !change.newContent) {
-    console.error("Invalid code change object:", change);
-    throw new Error("Invalid code change: missing required fields");
+    if (!inMcpMode) console.error("Invalid code change object:", change);
+    return {
+      filePath: change?.filePath || "unknown",
+      success: false,
+      error: "Invalid code change: missing required fields",
+      timestamp: new Date().toISOString(),
+    };
   }
 
   try {
-    console.log(`Processing code change for ${change.filePath}`);
+    if (!inMcpMode)
+      console.log(`Processing code change for ${change.filePath}`);
 
-    // Index the updated file
-    await ContextIndexerLogic.indexCodeFile(
-      change.filePath,
-      change.newContent,
-      change.languageHint
-    );
+    // Calculate content hash for quick comparison
+    let contentHash;
+    try {
+      const crypto = await import("crypto");
+      contentHash = crypto
+        .createHash("md5")
+        .update(change.newContent)
+        .digest("hex");
+    } catch (hashError) {
+      // If hash calculation fails, just continue with a default hash
+      contentHash = "unknown-hash-" + Date.now();
+    }
 
-    // Get the entities associated with this file
-    const entities = await getEntitiesFromChangedFiles([change.filePath]);
+    // Check if file exists and has the same content hash
+    let skipProcessing = false;
+    try {
+      const existingFileQuery = `
+        SELECT entity_id, content_hash 
+        FROM code_entities 
+        WHERE file_path = ? AND entity_type = 'file'
+      `;
+
+      const existingFile = await executeQuery(existingFileQuery, [
+        change.filePath,
+      ]);
+
+      // If file exists and content hash matches, skip processing
+      if (
+        existingFile &&
+        existingFile.rows &&
+        existingFile.rows.length > 0 &&
+        existingFile.rows[0].content_hash === contentHash
+      ) {
+        if (!inMcpMode)
+          console.log(
+            `File ${change.filePath} is unchanged, skipping indexing`
+          );
+        skipProcessing = true;
+      }
+    } catch (dbError) {
+      // Just log the error and continue with indexing
+      if (!inMcpMode)
+        console.warn(
+          `DB check error for ${change.filePath}, proceeding with indexing: ${dbError.message}`
+        );
+    }
+
+    let entities = [];
+
+    // Only do the indexing if we need to (file changed or doesn't exist)
+    if (!skipProcessing) {
+      try {
+        // Index the updated file
+        await ContextIndexerLogic.indexCodeFile(
+          change.filePath,
+          change.newContent,
+          change.languageHint
+        );
+      } catch (indexError) {
+        // If indexing fails, log error but continue
+        if (!inMcpMode)
+          console.error(
+            `Error indexing file ${change.filePath}: ${indexError.message}`
+          );
+        return {
+          filePath: change.filePath,
+          success: false,
+          error: `Indexing failed: ${indexError.message}`,
+          timestamp: new Date().toISOString(),
+        };
+      }
+    }
+
+    // Try to get entities even if indexing failed - they might already exist
+    try {
+      // Get the entities associated with this file
+      entities = await getEntitiesFromChangedFiles([change.filePath]);
+    } catch (entitiesError) {
+      // If getting entities fails, just return an empty array
+      if (!inMcpMode)
+        console.warn(
+          `Error getting entities for ${change.filePath}: ${entitiesError.message}`
+        );
+      entities = [];
+    }
 
     return {
       filePath: change.filePath,
       success: true,
       entityCount: entities.length,
+      unchanged: skipProcessing,
       timestamp: new Date().toISOString(),
     };
   } catch (error) {
-    console.error(
-      `Error processing code change for ${change.filePath}:`,
-      error
-    );
-    throw new Error(`Failed to process code change: ${error.message}`);
+    if (!inMcpMode)
+      console.error(
+        `Error processing code change for ${change.filePath}:`,
+        error
+      );
+
+    // Return error info but don't throw
+    return {
+      filePath: change.filePath,
+      success: false,
+      error: `Failed to process code change: ${error.message}`,
+      timestamp: new Date().toISOString(),
+    };
   }
 }
 
@@ -132,49 +225,82 @@ export async function processCodebaseChanges(changedFiles) {
  * @returns {Promise<CodeEntity[]>} Array of code entities related to the changed files
  */
 export async function getEntitiesFromChangedFiles(filePaths) {
+  const inMcpMode = process.env.MCP_MODE === "true";
+
   if (!filePaths || filePaths.length === 0) {
     return [];
   }
 
   try {
-    // First query: Get all entities directly matching the file paths
-    const placeholders = filePaths.map(() => "?").join(",");
-    const query = `SELECT * FROM code_entities WHERE path IN (${placeholders})`;
+    // Process files one at a time to avoid complex query errors
+    let allEntities = [];
+    let processedPaths = new Set();
 
-    const fileEntities = await executeQuery(query, filePaths);
+    for (const filePath of filePaths) {
+      if (processedPaths.has(filePath)) continue;
+      processedPaths.add(filePath);
 
-    // Get the IDs of the file entities to query for child entities
-    const fileEntityIds = fileEntities
-      .filter((entity) => entity.type === "file")
-      .map((entity) => entity.id);
+      try {
+        // Get entities directly matching this file path
+        const fileQuery = `SELECT * FROM code_entities WHERE file_path = ?`;
+        const fileEntities = await executeQuery(fileQuery, [filePath]);
 
-    // If we have file entities, query for their children
-    if (fileEntityIds.length > 0) {
-      const childPlaceholders = fileEntityIds.map(() => "?").join(",");
-      const childQuery = `SELECT * FROM code_entities WHERE parent_id IN (${childPlaceholders})`;
+        if (!fileEntities || !fileEntities.rows) continue;
 
-      const childEntities = await executeQuery(childQuery, fileEntityIds);
+        // Add the file entities to our result
+        const entities = [...fileEntities.rows];
 
-      // Combine file entities and their children, removing duplicates by ID
-      const allEntities = [...fileEntities];
+        // Get file entity IDs to query for children
+        const fileEntityIds = entities
+          .filter((entity) => entity.entity_type === "file")
+          .map((entity) => entity.entity_id);
 
-      // Add child entities that aren't already in the result set
-      const existingIds = new Set(allEntities.map((entity) => entity.id));
+        // If we have file entities, get their children
+        if (fileEntityIds.length > 0) {
+          for (const entityId of fileEntityIds) {
+            try {
+              const childQuery = `
+                SELECT * FROM code_entities 
+                WHERE parent_entity_id = ?
+              `;
+              const childEntities = await executeQuery(childQuery, [entityId]);
 
-      for (const childEntity of childEntities) {
-        if (!existingIds.has(childEntity.id)) {
-          allEntities.push(childEntity);
-          existingIds.add(childEntity.id);
+              if (childEntities && childEntities.rows) {
+                // Add child entities if not already present
+                for (const child of childEntities.rows) {
+                  // Check if entity is already in our results
+                  if (!entities.some((e) => e.entity_id === child.entity_id)) {
+                    entities.push(child);
+                  }
+                }
+              }
+            } catch (childErr) {
+              if (!inMcpMode) {
+                console.warn(
+                  `Error fetching children for entity ${entityId}: ${childErr.message}`
+                );
+              }
+              // Continue with next entityId
+            }
+          }
         }
-      }
 
-      return allEntities;
+        // Add all entities from this file to our result set
+        allEntities = [...allEntities, ...entities];
+      } catch (fileErr) {
+        if (!inMcpMode) {
+          console.warn(`Error processing file ${filePath}: ${fileErr.message}`);
+        }
+        // Continue with next file
+      }
     }
 
-    // If no file entities were found, just return what we have
-    return fileEntities;
+    return allEntities;
   } catch (error) {
-    console.error("Error retrieving entities from changed files:", error);
-    throw error;
+    if (!inMcpMode) {
+      console.error("Error retrieving entities from changed files:", error);
+    }
+    // Return empty array instead of throwing
+    return [];
   }
 }

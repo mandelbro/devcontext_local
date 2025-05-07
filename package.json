@@ -1,6 +1,6 @@
 {
   "name": "devcontext",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "description": "DevContext is a cutting-edge Model Context Protocol (MCP) server designed to provide developers with continuous, project-centric context awareness.",
   "main": "dist/mcp-server.bundle.js",
   "type": "module",
