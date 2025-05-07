@@ -1,0 +1,130 @@
+---
+description: Rules for update_conversation_context tool usage
+globs: **/*
+alwaysApply: true
+---
+
+# Update Conversation Context Tool
+
+The `update_conversation_context` tool is **REQUIRED** whenever code files are created, modified, or when new messages are exchanged during a conversation. This tool ensures the context remains current and accurate throughout the entire conversation.
+
+```javascript
+// ✅ DO: Call WHENEVER code changes are made or new messages are exchanged
+mcp_devcontext_update_conversation_context({
+  conversationId: "existing-conversation-id", // MUST be the ID returned from initialize_conversation_context
+  newMessages: [
+    { role: "assistant", content: "response content" },
+    { role: "assistant", content: "response content 2" }
+  ],
+  codeChanges: [
+    { 
+      filePath: "path/to/changed/file.js",
+      newContent: "updated file content", 
+      languageHint: "javascript" // Optional language hint
+    }
+  ],
+  preserveContextOnTopicShift: true, // Whether to maintain context when topic changes
+  contextIntegrationLevel: "balanced", // Options: "minimal", "balanced", "aggressive"
+  trackIntentTransitions: true, // Whether to track changes in conversation intent
+  tokenBudget: 4000 // Maximum token budget for context
+});
+
+// ❌ DON'T: Skip updating context after code changes
+// ❌ DON'T: Forget to include the conversationId
+// ❌ DON'T: Wait too long between updates (prefer frequent, smaller updates)
+// ❌ DON'T: Omit either newMessages or codeChanges when they exist
+```
+
+## Required Rules
+
+1. **MUST TRACK ALL CODE CHANGES**: This tool **MUST** be called whenever a file is created, modified, or deleted.
+
+2. **MUST TRACK CONVERSATION FLOW**: Call after each meaningful exchange of messages to maintain conversational context.
+
+3. **MULTIPLE CALLS ALLOWED AND ENCOURAGED**: Unlike initialization, this tool should be called multiple times throughout a conversation.
+
+4. **ALWAYS USE CONVERSATION ID**: Always pass the same conversationId obtained from the initialize_conversation_context call.
+
+## Parameter Guidelines
+
+- **conversationId**: Required - The ID returned from initialize_conversation_context
+- **newMessages**: Array of new messages exchanged since the last update
+  - Each message needs `role` ("user", "assistant", "system") and `content`
+- **codeChanges**: Array of file changes since the last update
+  - Each change needs `filePath` and `newContent`
+  - Include `languageHint` for better code analysis
+- **contextIntegrationLevel**: 
+  - "minimal" - Light integration for simple updates
+  - "balanced" - Default level (recommended)
+  - "aggressive" - Deep integration for critical changes
+- **preserveContextOnTopicShift**: Set to true to maintain context during topic changes (recommended)
+
+## Response Handling
+
+The tool returns a status and context continuity information:
+
+```javascript
+// Example response structure:
+{
+  "status": "success",
+  "message": "Conversation context updated for [conversation-id]",
+  "contextContinuity": {
+    "topicShift": false,
+    "intentTransition": false,
+    "contextPreserved": true
+  },
+  "synthesis": {
+    "summary": "Current conversation context"
+  }
+}
+```
+
+## Correct Implementation Pattern
+
+```javascript
+// ✅ DO: Follow these patterns for updating context
+
+// After new messages are exchanged:
+mcp_devcontext_update_conversation_context({
+  conversationId: "existing-conversation-id",
+  newMessages: [
+    { role: "user", content: "How do I implement feature X?" },
+    { role: "assistant", content: "You can implement it by..." }
+  ]
+});
+
+// After code changes:
+mcp_devcontext_update_conversation_context({
+  conversationId: "existing-conversation-id",
+  codeChanges: [
+    { 
+      filePath: "src/components/Feature.js",
+      newContent: "// Updated implementation...", 
+      languageHint: "javascript"
+    }
+  ]
+});
+
+// After both messages and code changes:
+mcp_devcontext_update_conversation_context({
+  conversationId: "existing-conversation-id",
+  newMessages: [
+    { role: "user", content: "I've updated the code as suggested" }
+  ],
+  codeChanges: [
+    { 
+      filePath: "src/components/Feature.js",
+      newContent: "// User's implementation...", 
+      languageHint: "javascript"
+    }
+  ]
+});
+```
+
+## Implementation Notes
+
+- Updates should happen as close as possible to when changes occur
+- Batch related changes together for efficiency when appropriate
+- The context integration level should match the significance of the update
+- Track both messages and code changes to maintain full context awareness
+- The conversationId must remain consistent throughout the entire conversation

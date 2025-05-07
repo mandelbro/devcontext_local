@@ -1,0 +1,133 @@
+---
+description: Rules for record_milestone_context tool usage
+globs: **/*
+alwaysApply: true
+---
+
+# Record Milestone Context Tool
+
+The `record_milestone_context` tool **SHOULD** be used to record significant events or accomplishments during a conversation. This tool is designed to capture important milestones that may be valuable for future reference and should be called sparingly (typically no more than once or twice per conversation).
+
+```javascript
+// ✅ DO: Call ONLY when significant milestones are reached
+mcp_devcontext_record_milestone_context({
+  conversationId: "existing-conversation-id", // MUST be the ID from initialize_conversation_context
+  name: "Feature implementation completed", // Short, descriptive name for the milestone
+  description: "Implemented the authentication system with JWT support", // Detailed description
+  milestoneCategory: "feature_completion", // Category of the milestone
+  customData: { // Optional custom data relevant to the milestone
+    affectedFiles: ["auth.js", "user.js"],
+    complexity: "medium"
+  },
+  assessImpact: true // Whether to automatically assess the impact of this milestone
+});
+
+// ❌ DON'T: Call for minor changes or routine operations
+// ❌ DON'T: Call more than once or twice in a conversation
+// ❌ DON'T: Forget to include the conversationId
+// ❌ DON'T: Use overly generic names or descriptions
+```
+
+## Required Rules
+
+1. **USE SPARINGLY**: This tool **SHOULD ONLY** be called to record truly significant events or accomplishments.
+
+2. **CAPTURE MEANINGFUL MILESTONES**: Use for feature completions, bug fixes, architectural decisions, or other notable accomplishments worth tracking.
+
+3. **INCLUDE SUFFICIENT DETAIL**: Always provide a descriptive name and detailed description to ensure future context.
+
+4. **ALWAYS USE CONVERSATION ID**: Always pass the same conversationId obtained from the initialize_conversation_context call.
+
+## Parameter Guidelines
+
+- **conversationId**: Required - The ID returned from initialize_conversation_context
+- **name**: A concise, descriptive name for the milestone
+- **description**: Detailed explanation of what was accomplished
+- **milestoneCategory**: 
+  - "bug_fix" - For resolved issues
+  - "feature_completion" - For completed features
+  - "refactoring" - For code restructuring
+  - "documentation" - For documentation improvements
+  - "test" - For added test coverage
+  - "configuration" - For configuration changes
+  - "uncategorized" - For other milestone types
+- **customData**: Any additional structured data relevant to the milestone
+- **assessImpact**: Set to true to automatically evaluate the impact of this milestone (recommended)
+
+## Response Handling
+
+The tool returns milestone information and impact assessment:
+
+```javascript
+// Example response structure:
+{
+  "milestoneId": "b7d3e5f8-a2c1-4d9e-8b6a-f5c3d2e1a0b9",
+  "status": "recorded",
+  "milestoneCategory": "feature_completion",
+  "relatedEntitiesCount": 8,
+  "impactAssessment": {
+    "impactScore": 0.75,
+    "impactLevel": "significant",
+    "impactSummary": "This feature affects core authentication system with moderate changes to 8 related entities. Risk level is moderate with 3 critical dependency paths identified.",
+    "scopeMetrics": {
+      "directlyModifiedEntities": 3,
+      "potentiallyImpactedEntities": 5,
+      "impactedComponents": 2,
+      "criticalPathsCount": 3
+    },
+    "stabilityRisk": 0.4,
+    "criticalPaths": [
+      {
+        "sourceId": "auth/login.js",
+        "path": "auth/login.js → user/validation.js → db/user.js",
+        "dependencyCount": 3
+      }
+    ],
+    "mostImpactedComponents": [
+      {
+        "name": "Authentication",
+        "count": 3
+      },
+      {
+        "name": "User Management",
+        "count": 2
+      }
+    ]
+  }
+}
+```
+
+## Correct Implementation Pattern
+
+```javascript
+// ✅ DO: Record significant milestones at appropriate times
+
+// After completing a feature:
+mcp_devcontext_record_milestone_context({
+  conversationId: "existing-conversation-id",
+  name: "Search functionality implementation",
+  description: "Implemented the full-text search functionality with filtering and sorting options",
+  milestoneCategory: "feature_completion"
+});
+
+// After fixing a critical bug:
+mcp_devcontext_record_milestone_context({
+  conversationId: "existing-conversation-id",
+  name: "Fixed authentication token expiration bug",
+  description: "Resolved issue where auth tokens weren't properly refreshing, causing session timeouts",
+  milestoneCategory: "bug_fix",
+  customData: {
+    bugId: "AUTH-123",
+    severity: "critical"
+  }
+});
+```
+
+## Implementation Notes
+
+- Record milestones at the completion of significant work, not during the process
+- Use descriptive names that will make sense when reviewed later
+- Categorize milestones appropriately to enable better organization and retrieval
+- Include relevant custom data that provides additional context
+- The impact assessment helps understand the scope and risk of changes
+- Use the returned assessment to inform next steps and follow-up actions

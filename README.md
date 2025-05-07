@@ -1,172 +1,80 @@
-# DevContext: Project-Centric Continuous Context Server
+# DevContext: Autonomous Context Awareness Model-Context-Protocol (MCP) Server
 
-DevContext is a state-of-the-art context management system for software development, implementing the Model Context Protocol (MCP) with advanced context retrieval techniques.
-
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+<p align="center">
+  <img src="https://i.postimg.cc/sghKLKf6/Dev-Context-banner.png" alt="DevContext Banner" width="100%" />
+</p>
 
 > **Empower your development workflow with intelligent context awareness** - DevContext understands your codebase, conversations, and development patterns to provide relevant context exactly when you need it.
 
-## Table of Contents
+## Introduction
 
-- [Overview](#overview)
-- [Key Features](#key-features)
-- [System Architecture](#system-architecture)
-- [Technology Stack](#technology-stack)
-- [Installation](#installation)
-- [Configuration](#configuration)
-- [Usage](#usage)
-- [Core Components](#core-components)
-- [Development](#development)
-- [License](#license)
-
-## Overview
-
-DevContext is a cutting-edge Model Context Protocol (MCP) server designed to provide developers with continuous, project-centric context awareness. Unlike traditional context systems, DevContext leverages sophisticated non-vector retrieval methods, focusing on keyword analysis, relationship graphs, and structured metadata to deliver highly relevant context during development.
+DevContext is a cutting-edge Model Context Protocol (MCP) server designed to provide developers with continuous, project-centric context awareness. Unlike traditional context systems, DevContext leverages sophisticated retrieval methods, focusing on keyword analysis, relationship graphs, and structured metadata to deliver highly relevant context during development.
 
 The server operates with a database instance dedicated to a single project, eliminating cross-project complexity and ensuring performance with minimal resource requirements. DevContext builds a comprehensive understanding of your codebase - from repository structure down to individual functions - while continuously learning from and adapting to your development patterns.
 
-## Key Features
-
-- **Intelligent Context Retrieval**: Sophisticated non-vector search with multi-factor relevance scoring
-- **Project-Level Understanding**: Comprehends project structure, code relationships, and development history
-- **Continuous Learning**: Identifies and learns code patterns, development workflows, and conversation topics
-- **Topic Segmentation**: Automatically detects conversation topic shifts while maintaining context continuity
-- **Development Timeline**: Records significant development events and maintains milestone checkpoints
-- **Purpose-Aware Responses**: Detects conversation purpose (debugging, planning, code review) to tailor context
-- **Automated Background Tasks**: Performs periodic context decay and pattern consolidation for optimal memory management
-- **Low Resource Requirements**: Optimized for performance without requiring GPU or specialized hardware
-- **Single-File Deployment**: Bundled into a single executable JavaScript file for simple IDE integration
-
-## Latest Updates
-
-### v1.0.3
-
-- **Enhanced Topic Handling**: Improved conversation segmentation with better topic detection
-- **User Intent Tracking**: Messages are now properly tagged with user intent information
-- **Context Continuity**: Better management of context during topic transitions
-- **Conversation Flow**: Refined conversation flow for more natural interaction
-
-### v1.0.2
-
-- **Bug Fix**: Fixed issue with initial user queries not being properly stored in conversation history
-- **Improved Logging**: Enhanced logging for conversation tracking and debugging
-
-### v1.0.1
-
-- **Background Tasks**: Added automated scheduling for context decay and pattern consolidation
-- **Improved Stability**: Enhanced error handling and resource management
-
-## System Architecture
-
-DevContext follows a modular architecture internally, bundled into a single deployable file:
-
-- **Lifecycle-Oriented Tools**: MCP tools that manage conversation phases and orchestrate context operations
-- **Core Logic Modules**: Specialized components handling specific aspects of context management
-- **TursoDB Backend**: SQL database storing all project-specific context, metadata, and relationships
-- **Stdin/Stdout Interface**: Communication protocol adhering to the Model Context Protocol standard
-
-## Technology Stack
+### Core Technologies
 
 - **Node.js**: Runtime environment (Node.js 18+)
 - **TursoDB**: SQL database optimized for edge deployment (compatible with SQLite)
-- **ESBuild**: JavaScript bundler for creating the single-file deployment package
 - **Model Context Protocol SDK**: For standardized communication with IDE clients
-- **Acorn**: JavaScript parser for AST-based code analysis
-- **Pure JavaScript**: No external vector libraries or machine learning dependencies
+- **Cursor Rules**: Autonomous development environment and workflow management
+- **JavaScript/TypeScript**: Pure JavaScript implementation with no external ML dependencies
 
-## Installation
+## Installation Guide
 
-### Via npm (Recommended)
-
-```bash
-# Install globally
-npm install -g devcontext
-
-# Or install in your project
-npm install devcontext --save
-```
-
-### From source
-
-#### Prerequisites
+### Prerequisites
 
 - Node.js 18.0.0 or higher
-- TursoDB account or compatible SQLite database
+- Cursor IDE with MCP support
+- TursoDB account (for database)
 
-#### Install Dependencies
+### Step 1: Set up TursoDB Database
 
-```bash
-# Clone the repository
-git clone https://github.com/yourusername/devcontext.git
-cd devcontext
+1. **Sign up for TursoDB**:
 
-# Install dependencies
-npm install
-```
+   - Visit [Turso](https://turso.tech/) and create an account
+   - The free tier is sufficient for most projects
 
-#### Build the Server
+2. **Install Turso CLI** (optional but recommended):
 
-```bash
-# Build the bundled server
-npm run build
-```
+   ```bash
+   curl -sSfL https://get.turso.tech/install.sh | bash
+   ```
 
-## Configuration
+3. **Authenticate with Turso**:
 
-Create a `.env` file based on `.env.example` with the following variables:
+   ```bash
+   turso auth login
+   ```
 
-```env
-# TursoDB connection details for your project database
-TURSO_DATABASE_URL=libsql://your-project-db-name.turso.io
-TURSO_AUTH_TOKEN=your_turso_auth_token_here
+4. **Create a project database**:
 
-# Logging and performance settings
-LOG_LEVEL=INFO
-DB_LOGGING_ENABLED=false
-DEFAULT_TOKEN_BUDGET=4000
-CONTEXT_DECAY_RATE=0.95
-```
+   ```bash
+   turso db create devcontext
+   ```
 
-## Usage
+5. **Get database credentials**:
 
-### Running the Server
+   ```bash
+   # Get database URL
+   turso db show devcontext --url
 
-```bash
-# Start the server
-npm start
-```
+   # Create auth token
+   turso db tokens create devcontext
+   ```
 
-### Setup Steps
+   Save both the URL and token for the next step.
 
-1. **Configure Turso Database:**
+### Step 2: Configure MCP in Cursor (can be applied to other IDE's as well)
 
-```bash
-# Install Turso CLI
-curl -sSfL https://get.turso.tech/install.sh | bash
-
-# Login to Turso
-turso auth login
-
-# Create a database
-turso db create devcontext
-
-# Get database URL and token
-turso db show devcontext --url
-turso db tokens create devcontext
-```
-
-Or you can visit [Turso](https://turso.tech/) and sign up and proceed to create the database and get proper credentials. The free plan will more than cover your project memory.
-
-2. **Configure Cursor MCP:**
-
-Update `.cursor/mcp.json` in your project directory with the database url and turso auth token:
+Create or edit `.cursor/mcp.json` in your project directory:
 
 ```json
 {
   "mcpServers": {
-    "cursor10x-mcp": {
+    "devcontext": {
       "command": "npx",
-      "args": ["-y", "devcontext"],
+      "args": ["-y", "devcontext@latest"],
       "enabled": true,
       "env": {
         "TURSO_DATABASE_URL": "your-turso-database-url",
@@ -177,68 +85,297 @@ Update `.cursor/mcp.json` in your project directory with the database url and tu
 }
 ```
 
-## Core Components
+Replace `your-turso-database-url` and `your-turso-auth-token` with the values obtained in Step 1.
 
-DevContext implements a comprehensive set of logical components:
+## Cursor Rules Implementation
+
+DevContext implements a sophisticated set of Cursor Rules that create an autonomous development environment. These rules guide Cursor's AI assistants in maintaining project scope alignment, incorporating up-to-date documentation, and implementing advanced task workflows.
+
+### Key Rule Components
+
+#### 1. DevContext MCP Tools Usage Guide
+
+The core rule defines a precise sequence for tool execution:
+
+```
+1. FIRST: Call initialize_conversation_context EXACTLY ONCE at START
+2. AS NEEDED: Call update_conversation_context for code changes/new messages
+3. AS NEEDED: Call retrieve_relevant_context when specific context is required
+4. OCCASIONALLY: Call record_milestone_context for significant achievements
+5. LAST: Call finalize_conversation_context EXACTLY ONCE at END
+```
+
+This workflow ensures comprehensive context management throughout the entire development session.
+
+#### 2. External Library Documentation Requirements
+
+All external library usage must be preceded by proper documentation retrieval:
+
+- **Two-Step Documentation Retrieval** using Context7
+- **Web Search Fallback** for documentation not available through Context7
+- **Multi-Source Documentation Synthesis** for comprehensive understanding
+
+This prevents common issues with incorrect API usage, incompatible versions, or missing dependencies.
+
+#### 3. Task Workflow System
+
+The task workflow system enables:
+
+- Structured task management in `tasks.md`
+- Task ID-based implementation order
+- Status tracking with completion metadata
+- Project blueprint integration for architectural context
+
+### Setting Up Cursor Rules
+
+1. **Create Rules Directory**:
+
+   ```bash
+   mkdir -p .cursor/rules
+   ```
+
+2. **Download/Copy and Paste Rules**:
+
+Download or copy and paste the .cursor/rules directory into your project. Next, copy and paste the contents of the `.cursorrules` file in your project root and paste it into your cursor settings rules (Cursor Settings -> Rules -> User Rules). You should also copy and paste the `.cursorrules` file into your main directory as well.
+
+3. **Customize Task Workflow** (Optional):
+   Create a `tasks.md` file in your project root to begin using the task management workflow.
+
+## Configuration Example
+
+Below is a complete example of an `mcp.json` file that configures both DevContext and Context7 MCP servers:
+
+```json
+{
+  "mcpServers": {
+    "devcontext": {
+      "command": "npx",
+      "args": ["-y", "devcontext@latest"],
+      "enabled": true,
+      "env": {
+        "TURSO_DATABASE_URL": "libsql://your-project-db-name.turso.io",
+        "TURSO_AUTH_TOKEN": "your_turso_auth_token_here"
+      }
+    },
+    "context7": {
+      "command": "npx",
+      "args": ["-y", "@upstash/context7-mcp@latest"]
+    }
+  }
+}
+```
+
+### Important Parameters
+
+| Parameter            | Description                      | Default Value   |
+| -------------------- | -------------------------------- | --------------- |
+| `TURSO_DATABASE_URL` | URL of your TursoDB instance     | None (Required) |
+| `TURSO_AUTH_TOKEN`   | Authentication token for TursoDB | None (Required) |
+
+## Table of Contents
+
+- [System Overview](#system-overview)
+- [Core Components](#core-components)
+  - [Text Processing](#text-processing)
+  - [Context Management](#context-management)
+  - [Pattern Recognition](#pattern-recognition)
+  - [Intent & Relevance Analysis](#intent--relevance-analysis)
+- [MCP Tools](#mcp-tools)
+  - [initialize_conversation_context](#initialize_conversation_context)
+  - [update_conversation_context](#update_conversation_context)
+  - [retrieve_relevant_context](#retrieve_relevant_context)
+  - [record_milestone_context](#record_milestone_context)
+  - [finalize_conversation_context](#finalize_conversation_context)
+- [Data Architecture](#data-architecture)
+- [Technical Specifications](#technical-specifications)
+- [Performance Considerations](#performance-considerations)
+- [Security](#security)
+- [Troubleshooting](#troubleshooting)
+- [License](#license)
+
+## System Overview
+
+DevContext is a state-of-the-art context management system for software development, implementing the Model Context Protocol (MCP) with advanced context retrieval techniques.
+
+The system operates as a Node.js application with a modular JavaScript codebase, bundled into a single `.js` file using `esbuild`. It leverages TursoDB (or similar SQL database) as the persistent store for all context, metadata, and optional logs for a specific project.
+
+**Key Differentiators:**
+
+- **Non-Vector Retrieval**: Context retrieval uses sophisticated keyword analysis, relationship graphs, and structured metadata instead of vector embeddings
+- **Project-Centric Design**: Each server instance is dedicated to a single project, simplifying data management
+- **Minimal Dependencies**: Restricted to core essentials - MCP SDK, TursoDB client, and lightweight AST parsing
+- **Hierarchical Understanding**: Context is understood from repository structure down to function/variable levels
+- **Intelligent Context Prioritization**: Multi-factor relevance scoring based on recency, importance, relationships, and developer focus
+
+## Core Components
 
 ### Text Processing
 
-- Language-aware tokenization with specialized handling for JavaScript/TypeScript, Python, Java, C#, Ruby, and Go
-- Keyword extraction with language-specific weighting
-- Semantic boundary respecting n-grams
-- Language-specific idiom detection
+- **Language-aware tokenization** with specialized handling for JavaScript/TypeScript, Python, Java, C#, Ruby, and Go
+- **Keyword extraction** with language-specific weighting
+- **Semantic boundary respecting n-grams**
+- **Language-specific idiom detection**
 
 ### Context Management
 
-- Code entity indexing and relationship tracking
-- Conversation topic segmentation and purpose detection
-- Timeline event recording and milestone snapshots
-- Focus area prediction based on developer activity
+- **Code entity indexing** and relationship tracking
+- **Conversation topic segmentation** and purpose detection
+- **Timeline event recording** and milestone snapshots
+- **Focus area prediction** based on developer activity
 
 ### Pattern Recognition
 
-- Code pattern identification and storage
-- Automatic pattern learning from examples
-- Cross-session pattern promotion
-- Design pattern detection
+- **Code pattern identification** and storage
+- **Automatic pattern learning** from examples
+- **Cross-session pattern promotion**
+- **Design pattern detection**
 
 ### Intent & Relevance Analysis
 
-- Query intent prediction
-- Multi-factor context prioritization
-- Token budget management
-- Context integration across topic shifts
+- **Query intent prediction**
+- **Multi-factor context prioritization**
+- **Token budget management**
+- **Context integration across topic shifts**
 
-## Development
+## MCP Tools
 
-### Project Structure
+DevContext implements the following MCP tools that can be invoked by Cursor IDE:
 
-The codebase is organized into modules for better maintainability:
+### initialize_conversation_context
 
-```
-devcontext/
-├── dist/                # Output directory for bundled files
-│   └── mcp-server.bundle.js
-├── src/
-│   ├── logic/           # Core business logic modules
-│   ├── schemas/         # Zod schemas for tool validation
-│   ├── tools/           # MCP tool implementations
-│   ├── utils/           # Utility functions
-│   ├── main.js          # Server entry point
-│   ├── config.js        # Configuration loading
-│   └── db.js            # Database client setup
-├── esbuild.config.js    # Build configuration
-├── package.json         # Dependencies and scripts
-└── .env.example         # Example environment variables
-```
+Initializes a new conversation session with comprehensive project context.
 
-### Building for Development
+**When to use**: At the beginning of every conversation, exactly once.
 
-```bash
-# Run the development build and server
-npm run dev
-```
+**Key parameters**:
+
+- `initialQuery`: The user's first message or question
+- `contextDepth`: Minimal, standard, or comprehensive context depth
+- `includeArchitecture`: Whether to include architectural context
+- `focusHint`: Optional focus on specific code entity
+
+**Returns**: Conversation ID and initial context summary
+
+### update_conversation_context
+
+Updates the active context with new messages and code changes.
+
+**When to use**: After code changes or new messages are exchanged.
+
+**Key parameters**:
+
+- `conversationId`: ID from initialize_conversation_context
+- `newMessages`: New messages exchanged since last update
+- `codeChanges`: Code files created or modified
+- `preserveContextOnTopicShift`: Whether to maintain context during topic changes
+
+**Returns**: Updated focus and context continuity information
+
+### retrieve_relevant_context
+
+Retrieves context snippets relevant to a specific query.
+
+**When to use**: When specific project context is needed.
+
+**Key parameters**:
+
+- `conversationId`: ID from initialize_conversation_context
+- `query`: Specific question about the project
+- `constraints`: Optional filters for entity types, file paths, etc.
+- `weightingStrategy`: How to prioritize results
+
+**Returns**: Relevant context snippets with explanations
+
+### record_milestone_context
+
+Records significant development milestones for future reference.
+
+**When to use**: After completing important features, fixing critical bugs, or making architectural decisions.
+
+**Key parameters**:
+
+- `conversationId`: ID from initialize_conversation_context
+- `name`: Short, descriptive milestone name
+- `description`: Detailed explanation
+- `milestoneCategory`: Category (feature, bug fix, refactoring, etc.)
+- `assessImpact`: Whether to analyze impact
+
+**Returns**: Milestone ID and impact assessment
+
+### finalize_conversation_context
+
+Concludes a conversation, extracting learnings and suggesting next steps.
+
+**When to use**: At the end of every conversation, exactly once.
+
+**Key parameters**:
+
+- `conversationId`: ID from initialize_conversation_context
+- `extractLearnings`: Whether to identify and extract learnings
+- `promotePatterns`: Whether to promote patterns to global repository
+- `generateNextSteps`: Whether to suggest follow-up actions
+
+**Returns**: Conversation summary, extracted learnings, and next steps
+
+## Data Architecture
+
+DevContext uses a SQL database (TursoDB) with the following core tables:
+
+- **code_entities**: Stores indexed code from files, functions, classes, etc.
+- **entity_keywords**: Maps keywords to code entities for search
+- **code_relationships**: Tracks relationships between code entities
+- **conversation_history**: Stores conversation messages
+- **conversation_topics**: Segments conversations into coherent topics
+- **timeline_events**: Records significant development events
+- **project_patterns**: Stores identified code patterns
+- **focus_areas**: Tracks developer attention and intention
+
+The database schema is automatically created and maintained by the server.
+
+## Technical Specifications
+
+- **Node.js**: Version 18.0.0 or higher required
+- **Database**: TursoDB (or compatible SQLite)
+- **Bundling**: ESBuild for single-file deployment
+- **Protocol**: Model Context Protocol via @modelcontextprotocol/sdk
+- **Parsing**: Lightweight JavaScript AST parsing (acorn)
+- **Operating Systems**: Cross-platform (Windows, macOS, Linux)
+
+## Performance Considerations
+
+DevContext is optimized for performance with:
+
+- **Efficient SQL queries** with proper indexing
+- **In-memory caching** for frequently accessed data
+- **Incremental updates** to minimize processing
+- **Asynchronous operations** for non-blocking execution
+- **Adaptive context retrieval** based on token budget
+- **Scheduled background tasks** during idle periods
+
+For large codebases (>100,000 LOC), initial indexing may take several minutes, but subsequent operations remain fast and responsive.
+
+## Security
+
+- **Isolated Database**: Each project uses a dedicated database instance
+- **Secure Credentials**: TursoDB credentials managed via environment variables
+- **Input Validation**: All inputs validated with Zod schemas
+- **Parameterized Queries**: SQL injection protection
+- **No External APIs**: All processing happens locally
+
+## Troubleshooting
+
+Common issues and solutions:
+
+- **Connection Errors**: Verify TursoDB credentials and database URL
+- **Slow Initial Startup**: Normal for large codebases; subsequent startups are faster
+- **Missing Context**: Check token budget; increase if necessary
+- **Tool Errors**: Ensure proper conversation ID is being passed between tools
+- **Performance Issues**: Consider reducing scope of indexed files or increasing cache size
 
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+---
+
+_DevContext: Continuous Context for Continuous Progress_

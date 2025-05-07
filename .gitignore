@@ -4,13 +4,12 @@ node_modules/
 .env.local
 .env
 .cursor/mcp.json
+.cursor/rules/200-cursor-rules.mdc
 
 tasks/
 /tasks
 
 *.tgz
-
-.cursorrules
 
 docs/
 /docs/

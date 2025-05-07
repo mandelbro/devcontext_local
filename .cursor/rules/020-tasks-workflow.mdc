@@ -1,0 +1,190 @@
+---
+description: Task Workflow System for project implementation
+globs: tasks.md
+alwaysApply: true
+---
+
+# Task Workflow System
+
+- **Purpose:** Standardize task implementation with proper tracking and status updates
+- **Implementation:** Tasks stored in `tasks.md`
+
+## Task Management Workflow
+
+- **Task Structure**
+
+  - Tasks are defined in `tasks.md` with:
+
+  ### Task ID: 000
+
+  - **Title**: Example title
+  - **File**: example file path
+  - **Complete**: [ ]
+
+  #### Prompt:
+
+  ```
+  DETAILED PROMPT INCLUDING FILE PATH
+  ```
+
+- **Task Status Management**
+
+  ```javascript
+  // ✅ DO: Update task status when completing implementation
+  // Change status from `[ ]` to `[x]`
+  // Update the relevant Summary counts
+  ```
+
+## Task Implementation Guidelines
+
+- **Always review the project blueprint before implementing tasks**
+
+  ```javascript
+  // ✅ DO: Read the `docs/blueprint.md` file in the docs directory (if available)
+  // This provides essential context about the overall project architecture
+  ```
+
+- **Only modify task status and metadata in tasks.md**
+
+  ```javascript
+  // ✅ DO: Only update the "Complete" field of tasks
+  // ✅ DO: Update Summary counts (Total Tasks, Pending, Complete)
+
+  // ❌ DON'T: Modify task ids, titles, or prompts unless specifically requested
+  ```
+
+- **Implement each task according to its prompt and specified file**
+
+  ```javascript
+  // ✅ DO: Focus implementation on the file specified in the task
+  // ✅ DO: Follow the detailed instructions in the prompt
+  ```
+
+- **Always process tasks in their defined order unless specified**
+  ```javascript
+  // ✅ DO: Find the first task with Complete field as "[ ]" when asked for "next task"
+  // ✅ DO: If a specific task ID is provided, implement that task
+  ```
+
+## Task Workflow Process
+
+1. **Find the task to implement**
+   - When user requests "next task", select first pending task from `tasks.md`
+   - When user specifies task ID, locate that specific task
+2. **Review project context**
+   - Read docs/blueprint.md to understand project architecture whenever available
+   - Review any related files mentioned in the task
+3. **Implement the task**
+   - Follow instructions in the task prompt
+   - Focus on the file specified in the task
+4. **Update task to Complete**
+   - Change Complete field to "[x]"
+   - Update metadata (Total Tasks, Pending, Complete)
+   - Save changes to tasks.md
+5. **Notify completion**
+   - Inform user of successful task completion
+   - Provide summary of changes made
+
+## Task Creation Guidelines
+
+- **Adding New Tasks Based on User Requests**
+
+  ```javascript
+  // ✅ DO: Add tasks with properly structured format
+  // Add new task to tasks.md with all required fields and same format:
+  ### Task ID: 000
+
+  - **Title**: Example title
+  - **File**: example file path
+  - **Complete**: [ ]
+
+  #### Prompt:
+
+  ```
+
+  DETAILED PROMPT INCLUDING FILE PATH
+
+  ```
+
+  ```
+
+- **Task ID Assignment Rules**
+
+  - **End of List**: If adding to the end, use the next sequential number (001, 002, 003...)
+  - **Between Existing Tasks**: Use decimal extension format for insertion between tasks
+
+    ```
+    // ✅ DO: Use decimal extension when inserting between tasks
+    // Example: To add between Task 002 and Task 003:
+    //   - First insertion: 002-1
+    //   - Second insertion: 002-2
+    //   - For more granularity: 002-1-1, 002-1-2, etc.
+
+    // ❌ DON'T: Break sequence ordering
+    // ❌ DON'T: Use non-numeric or inconsistent formats
+    ```
+
+  - **Task ID must reflect implementation order** - Lower numbers should be implemented before higher numbers
+
+- **Task Creation Process**
+
+  1. **Analyze user request** for task requirements
+  2. **Determine optimal insertion point** based on logical implementation sequence
+  3. **Generate appropriate Task ID** (sequential or decimal extension)
+  4. **Create complete task entry** with all required fields
+  5. **Update Summary** in tasks.md (Total Tasks, Pending counts)
+
+  ```javascript
+  // ✅ DO: Follow this format when adding a new task
+
+  // Assuming task should be inserted between 002 and 003:
+
+  ### Task ID: 002-1
+
+  - **Title**: Implement user authentication
+  - **File**: src/auth/userAuth.js
+  - **Complete**: [ ]
+
+  #### Prompt:
+
+  ```
+
+  Create a user authentication module with the following features:
+
+  - Username/password authentication
+  - Session management
+  - Password hashing with bcrypt
+
+  Implement in src/auth/userAuth.js
+
+  ```
+
+  ```
+
+- **Task Metadata Maintenance**
+
+  - **Always update summary statistics** when adding or modifying tasks:
+    ```
+    // Example task summary section
+    // Summary: Total Tasks: 15 | Pending: 8 | Complete: 7
+    ```
+  - **Maintain logical grouping** of related tasks whenever possible
+
+- **Task Template**
+
+  ```
+  ### Task ID: [ID]
+
+  - **Title**: [Concise description]
+  - **File**: [Target file path]
+  - **Complete**: [ ]
+
+  #### Prompt:
+
+  ```
+
+  [Detailed instructions for implementation]
+
+  ```
+
+  ```

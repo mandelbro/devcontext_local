@@ -1,0 +1,94 @@
+---
+description: Rules for initialize_conversation_context tool usage
+globs: **/*
+alwaysApply: true
+---
+
+# Initialize Conversation Context Tool
+
+The `initialize_conversation_context` tool is **REQUIRED** at the beginning of every conversation. This tool sets up the context for the entire conversation and **MUST** be the first tool called.
+
+```javascript
+// ✅ DO: Call EXACTLY ONCE at the BEGINNING of EVERY conversation
+mcp_devcontext_initialize_conversation_context({
+  initialQuery: "user's actual message or question",
+  contextDepth: "standard", // Options: "minimal", "standard", "comprehensive"
+  includeArchitecture: true, // Whether to include architectural context
+  includeRecentConversations: true, // Whether to include recent conversations
+  maxCodeContextItems: 5, // Maximum number of code items to include
+  maxRecentChanges: 5, // Maximum number of recent changes to include
+  tokenBudget: 4000, // Maximum token budget for context
+  focusHint: { // Optional focus hint
+    type: "file|directory|module|class|function",
+    identifier: "path/to/entity"
+  }
+});
+
+// ❌ DON'T: Skip calling this tool at the beginning of a conversation
+// ❌ DON'T: Call this tool multiple times in the same conversation
+// ❌ DON'T: Call this tool in the middle or end of a conversation
+// ❌ DON'T: Use without setting proper parameters
+```
+
+## Required Rules
+
+1. **MUST BE CALLED FIRST**: This tool **MUST** be the first tool called in every conversation, before any other tools.
+
+2. **EXACTLY ONCE PER CONVERSATION**: This tool **MUST** be called exactly once per conversation. Never call it again during the same session.
+
+3. **USE PROGRESSIVE LOADING**: Use the standard context depth unless deeper context is specifically needed.
+
+## Parameter Guidelines
+
+- **initialQuery**: Use the user's actual message or question
+- **contextDepth**: 
+  - "minimal" - Light context for simple queries
+  - "standard" - Default balanced context (recommended)
+  - "comprehensive" - Deep context for complex operations
+- **includeArchitecture**: Set to true to include architectural overview (recommended)
+- **tokenBudget**: Adjust based on context needs (default: 4000)
+- **focusHint**: Use only when there's a clear entity to focus on
+
+## Response Handling
+
+The tool returns a conversationId that **MUST** be used in all subsequent tool calls in the conversation:
+
+```javascript
+// Example response structure:
+{
+  "conversationId": "42dd6083-db4f-45c2-a4eb-a102ae190902",
+  "initialContextSummary": "Project context initialized for query...",
+  "predictedIntent": "bug_fixing",
+  "comprehensiveContext": {
+    "codeContext": [...],
+    "architectureContext": {...},
+    "projectStructure": {...},
+    "recentChanges": [...],
+    "globalPatterns": [...]
+  }
+}
+```
+
+## Correct Implementation Pattern
+
+```javascript
+// ✅ DO: Follow this exact pattern in EVERY conversation
+// 1. At the VERY START - Call initialize_conversation_context EXACTLY ONCE
+mcp_devcontext_initialize_conversation_context({
+  initialQuery: "User's first message here",
+  contextDepth: "standard",
+  includeArchitecture: true,
+  includeRecentConversations: true
+});
+
+// 2. Analyze and use context returned to improve your understanding of the project and tasks ahead
+// 3. Use other tools as needed during the conversation
+// 4. NEVER call initialize_conversation_context again
+```
+
+## Implementation Notes
+
+- The tool initializes a conversation session that tracks context throughout the interaction
+- It retrieves relevant code snippets, project architecture, and patterns based on the initial query
+- The resulting context will be available to all subsequent tools in the conversation
+- The conversationId from this tool must be passed to other tools to maintain context continuity

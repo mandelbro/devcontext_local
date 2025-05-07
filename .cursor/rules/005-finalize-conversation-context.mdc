@@ -1,0 +1,174 @@
+---
+description: Rules for finalize_conversation_context tool usage
+globs: **/*
+alwaysApply: false
+---
+
+# Finalize Conversation Context Tool
+
+The `finalize_conversation_context` tool is **REQUIRED** at the end of every conversation. This tool properly closes the conversation session, extracts learnings, promotes patterns, and **MUST** be the last tool called.
+
+```javascript
+// ✅ DO: Call EXACTLY ONCE at the END of EVERY conversation
+mcp_devcontext_finalize_conversation_context({
+  conversationId: "existing-conversation-id", // MUST be the ID from initialize_conversation_context
+  clearActiveContext: false, // Whether to clear active context (usually false)
+  extractLearnings: true, // Whether to extract learnings from the conversation
+  promotePatterns: true, // Whether to promote patterns to global repository
+  synthesizeRelatedTopics: true, // Whether to synthesize related topics
+  generateNextSteps: true, // Whether to generate next steps for the user
+  outcome: "completed", // Options: "completed", "abandoned", "paused", "reference_only"
+});
+
+// ❌ DON'T: Skip calling this tool at the end of a conversation
+// ❌ DON'T: Call this tool multiple times in the same conversation
+// ❌ DON'T: Call this tool at the beginning or middle of a conversation
+// ❌ DON'T: Forget to review and communicate the returned next steps to the user
+```
+
+## Required Rules
+
+1. **MUST BE CALLED LAST**: This tool **MUST** be the last tool called in every conversation, after all other tools.
+
+2. **EXACTLY ONCE PER CONVERSATION**: This tool **MUST** be called exactly once per conversation. Never call it more than once.
+
+3. **REVIEW NEXT STEPS**: Always review the returned next steps and follow-up topics and communicate them to the user before ending the conversation.
+
+4. **ALWAYS USE CONVERSATION ID**: Always pass the same conversationId obtained from the initialize_conversation_context call.
+
+## Parameter Guidelines
+
+- **conversationId**: Required - The ID returned from initialize_conversation_context
+- **clearActiveContext**: Whether to clear active context
+  - Set to false if the conversation might continue later (recommended)
+  - Set to true if the conversation is completely finished
+- **extractLearnings**: Set to true to identify and extract learnings (recommended)
+- **promotePatterns**: Set to true to promote identified patterns to global repository (recommended)
+- **synthesizeRelatedTopics**: Set to true to link with related conversations (recommended)
+- **generateNextSteps**: Set to true to get suggested next actions (recommended)
+- **outcome**:
+  - "completed" - Normal completion (default)
+  - "abandoned" - Conversation was abandoned before completion
+  - "paused" - Conversation will continue later
+  - "reference_only" - For reference only, no action needed
+
+## Response Handling
+
+The tool returns a rich set of data that **MUST** be reviewed before concluding the conversation:
+
+```javascript
+// Example response structure:
+{
+  "status": "success",
+  "summary": "Implemented authentication system with JWT support",
+  "purpose": "feature_implementation",
+
+  // Valuable learnings from the conversation
+  "extractedLearnings": {
+    "learnings": [
+      {
+        "type": "code_pattern",
+        "content": "Always validate JWT tokens with explicit expiration checks",
+        "confidence": 0.87,
+        "patternId": "auth-jwt-validation-pattern"
+      }
+    ],
+    "count": 1,
+    "byType": { "code_pattern": 1 },
+    "averageConfidence": 0.87
+  },
+
+  // Patterns that were promoted to global knowledge
+  "promotedPatterns": {
+    "promoted": 1,
+    "patterns": [
+      {
+        "patternId": "auth-jwt-validation-pattern",
+        "name": "JWT Validation Pattern",
+        "type": "security",
+        "promoted": true,
+        "confidence": 0.92
+      }
+    ]
+  },
+
+  // Insights from related conversations
+  "relatedConversations": {
+    "relatedCount": 2,
+    "conversations": [
+      {
+        "conversationId": "f7e4d3c2-b1a0-9f8e-7d6c-5b4a3c2d1e0f",
+        "summary": "Fixed JWT token refresh issues",
+        "timestamp": 1746591234567,
+        "similarityScore": 0.78,
+        "commonTopics": ["authentication", "JWT", "security"]
+      }
+    ],
+    "synthesizedInsights": [
+      {
+        "topic": "JWT Authentication",
+        "insight": "Multiple conversations have addressed JWT implementation with focus on proper validation and refresh mechanisms",
+        "conversationCount": 2
+      }
+    ]
+  },
+
+  // Suggested follow-up actions
+  "nextSteps": {
+    "suggestedNextSteps": [
+      {
+        "action": "Implement unit tests for JWT validation edge cases",
+        "priority": "high",
+        "rationale": "Ensure the new authentication system handles token expiration correctly"
+      },
+      {
+        "action": "Update API documentation with authentication requirements",
+        "priority": "medium",
+        "rationale": "Ensure developers know how to use the new authentication system"
+      }
+    ],
+    "followUpTopics": [
+      {
+        "topic": "Role-based access control integration",
+        "priority": "medium",
+        "rationale": "Natural extension of the authentication system"
+      }
+    ],
+    "referenceMaterials": [
+      {
+        "title": "JWT Best Practices",
+        "path": "docs/security/authentication.md",
+        "type": "documentation",
+        "relevance": 0.89
+      }
+    ]
+  }
+}
+```
+
+## Correct Implementation Pattern
+
+```javascript
+// ✅ DO: Follow this exact pattern in EVERY conversation
+// 1. At the VERY END - Call finalize_conversation_context EXACTLY ONCE
+mcp_devcontext_finalize_conversation_context({
+  conversationId: "existing-conversation-id",
+  extractLearnings: true,
+  promotePatterns: true,
+  generateNextSteps: true,
+  outcome: "completed",
+});
+
+// 2. Review the returned data, especially nextSteps
+// 3. Communicate the suggested next actions and follow-up topics to the user
+// 4. NEVER end a conversation without calling finalize_conversation_context
+```
+
+## Implementation Notes
+
+- The tool finalizes the conversation session and performs important cleanup operations
+- It extracts valuable learnings that can be applied to future conversations
+- It promotes recurring patterns to a global repository for cross-session knowledge
+- It identifies related conversations and synthesizes insights across them
+- It generates suggested next steps and follow-up topics that MUST be communicated to the user
+- The conversationId must be the same one used throughout the entire conversation

@@ -1,5 +1,6 @@
 # Development and test files
-.cursor/
+.cursor/mcp.json
+.cursor/rules/200-cursor-rules.mdc
 .github/
 .vscode/
 tests/

@@ -1,0 +1,374 @@
+# These rules MUST be followed ALWAYS without exception.
+
+## RULE: Initialize Conversation Context
+
+The `initialize_conversation_context` tool is **REQUIRED** at the beginning of every conversation and **MUST** be the first tool called.
+
+```javascript
+// ✅ DO: Call EXACTLY ONCE at the BEGINNING of EVERY conversation
+mcp_devcontext_initialize_conversation_context({
+  initialQuery: "user's actual message or question", // Required
+  contextDepth: "standard", // Options: "minimal", "standard", "comprehensive"
+  includeArchitecture: true, // Whether to include architectural context
+  includeRecentConversations: true, // Whether to include recent conversations
+  maxCodeContextItems: 5, // Maximum number of code items to include
+  maxRecentChanges: 5, // Maximum number of recent changes to include
+  tokenBudget: 4000, // Maximum token budget for context
+  focusHint: {
+    // Optional focus hint
+    type: "file|directory|module|class|function",
+    identifier: "path/to/entity",
+  },
+});
+
+// ❌ DON'T: Skip calling this tool at the beginning
+// ❌ DON'T: Call this tool multiple times in the same conversation
+// ❌ DON'T: Call this tool in the middle or end of a conversation
+```
+
+### Requirements:
+
+- **MUST BE CALLED FIRST**: This tool must be the first tool called in every conversation
+- **EXACTLY ONCE PER CONVERSATION**: Never call it more than once in a session
+- **RETURNS CONVERSATION ID**: Captures and returns the conversationId that must be used in all subsequent tool calls
+
+## RULE: Update Conversation Context
+
+The `update_conversation_context` tool **MUST** be called whenever code files are modified or new messages are exchanged to keep context current.
+
+```javascript
+// ✅ DO: Call WHENEVER code changes or new messages occur
+mcp_devcontext_update_conversation_context({
+  conversationId: "existing-conversation-id", // Required - from initialize_conversation_context
+  newMessages: [
+    { role: "user", content: "User's message" },
+    { role: "assistant", content: "Assistant's response" },
+  ],
+  codeChanges: [
+    {
+      filePath: "path/to/file.js",
+      newContent: "Updated file content",
+      languageHint: "javascript", // Optional but recommended
+    },
+  ],
+  preserveContextOnTopicShift: true, // Whether to maintain context during topic changes
+  contextIntegrationLevel: "balanced", // Options: "minimal", "balanced", "aggressive"
+  trackIntentTransitions: true, // Whether to track intent changes
+  tokenBudget: 4000, // Maximum token budget
+});
+
+// ❌ DON'T: Skip updating after code changes
+// ❌ DON'T: Forget to include the conversationId
+// ❌ DON'T: Omit either newMessages or codeChanges when they exist
+```
+
+### Requirements:
+
+- **MULTIPLE CALLS ALLOWED**: Unlike initialization, this should be called multiple times as needed
+- **TRACK ALL CODE CHANGES**: Must be called after any file creation, modification, or deletion
+- **TRACK CONVERSATION FLOW**: Call after each meaningful exchange of messages
+- **ALWAYS USE CONVERSATION ID**: Pass the same ID from initialize_conversation_context
+
+## RULE: Retrieve Relevant Context
+
+The `retrieve_relevant_context` tool **SHOULD** be called when specific contextual information about the project is needed.
+
+```javascript
+// ✅ DO: Call WHEN specific project context is needed
+mcp_devcontext_retrieve_relevant_context({
+  conversationId: "existing-conversation-id", // Required - from initialize_conversation_context
+  query: "How does the authentication system work?", // Specific query about the project
+  tokenBudget: 4000,
+  constraints: {
+    entityTypes: ["file", "class", "function"], // Optional filter
+    filePaths: ["src/auth/", "src/users/"], // Optional path filter
+    includeConversation: true, // Whether to include conversation history
+    crossTopicSearch: false, // Whether to search across topic boundaries
+  },
+  contextFilters: {
+    minRelevanceScore: 0.3, // Minimum relevance threshold
+    excludeTypes: ["test", "config"], // Types to exclude
+    preferredLanguages: ["javascript", "typescript"], // Preferred languages
+  },
+  weightingStrategy: "balanced", // Options: "relevance", "recency", "hierarchy", "balanced"
+});
+
+// ❌ DON'T: Call repeatedly for the same information
+// ❌ DON'T: Use for generic questions that don't need project context
+// ❌ DON'T: Call with overly broad queries
+```
+
+### Requirements:
+
+- **USE SPARINGLY AND PURPOSEFULLY**: Only call when specific project context is needed
+- **USE TARGETED QUERIES**: Queries should be specific and focused
+- **AVOID REDUNDANT CALLS**: Don't retrieve the same information multiple times
+- **ALWAYS USE CONVERSATION ID**: Pass the same ID from initialize_conversation_context
+
+## RULE: Record Milestone Context
+
+The `record_milestone_context` tool **SHOULD** be used to record significant events or accomplishments, but **SPARINGLY** (no more than once or twice per conversation).
+
+```javascript
+// ✅ DO: Call ONLY when significant milestones are reached
+mcp_devcontext_record_milestone_context({
+  conversationId: "existing-conversation-id", // Required - from initialize_conversation_context
+  name: "Feature implementation completed", // Short, descriptive name
+  description: "Implemented the authentication system with JWT support", // Detailed description
+  milestoneCategory: "feature_completion", // Category
+  customData: {
+    // Optional custom data
+    affectedFiles: ["auth.js", "user.js"],
+    complexity: "medium",
+  },
+  assessImpact: true, // Whether to automatically assess impact
+});
+
+// ❌ DON'T: Call for minor changes or routine operations
+// ❌ DON'T: Call more than once or twice in a conversation
+// ❌ DON'T: Use generic names or descriptions
+```
+
+### Requirements:
+
+- **USE SPARINGLY**: Only call for truly significant events or accomplishments
+- **CAPTURE MEANINGFUL MILESTONES**: Feature completions, bug fixes, architectural decisions
+- **INCLUDE SUFFICIENT DETAIL**: Provide descriptive name and detailed description
+- **ALWAYS USE CONVERSATION ID**: Pass the same ID from initialize_conversation_context
+
+## RULE: Finalize Conversation Context
+
+The `finalize_conversation_context` tool is **REQUIRED** at the end of every conversation and **MUST** be the last tool called.
+
+```javascript
+// ✅ DO: Call EXACTLY ONCE at the END of EVERY conversation
+mcp_devcontext_finalize_conversation_context({
+  conversationId: "existing-conversation-id", // Required - from initialize_conversation_context
+  clearActiveContext: false, // Whether to clear active context
+  extractLearnings: true, // Whether to extract learnings
+  promotePatterns: true, // Whether to promote patterns
+  synthesizeRelatedTopics: true, // Whether to synthesize related topics
+  generateNextSteps: true, // Whether to generate next steps
+  outcome: "completed", // Options: "completed", "abandoned", "paused", "reference_only"
+});
+
+// ❌ DON'T: Skip calling this tool at the end
+// ❌ DON'T: Call this tool multiple times
+// ❌ DON'T: Call this tool at the beginning or middle
+// ❌ DON'T: Forget to review and communicate the returned next steps to the user
+```
+
+### Requirements:
+
+- **MUST BE CALLED LAST**: This must be the last tool called in every conversation
+- **EXACTLY ONCE PER CONVERSATION**: Never call it more than once
+- **REVIEW NEXT STEPS**: Always review returned next steps and communicate them to the user
+- **ALWAYS USE CONVERSATION ID**: Pass the same ID from initialize_conversation_context
+
+## RULE: External Library Documentation Requirements
+
+- **ALWAYS Use Context7 Before Using External Libraries**
+
+  - The agent MUST retrieve and review documentation via Context7 before implementing any code that uses an external library
+  - This applies to ALL libraries not part of the standard language libraries
+  - No exceptions - even for commonly known libraries like React, Express, or Lodash
+
+- **Two-Step Documentation Retrieval Process**
+
+  ```javascript
+  // ✅ DO: ALWAYS follow this exact two-step process
+  // Step 1: Resolve the library name to a Context7-compatible ID
+  const libraryIdResponse =
+    (await mcp_context7_resolve) -
+    library -
+    id({
+      libraryName: "express",
+    });
+
+  // Step 2: Get the documentation using the resolved ID
+  const docsResponse =
+    (await mcp_context7_get) -
+    library -
+    docs({
+      context7CompatibleLibraryID: libraryIdResponse.libraryId,
+      tokens: 10000, // Adjust based on documentation needs
+      topic: "routing", // Optional: focus on specific area
+    });
+
+  // ❌ DON'T: Skip the resolution step
+  // ❌ DON'T: Use hardcoded library IDs
+  // ❌ DON'T: Proceed with implementation without review
+  ```
+
+- **Never Skip Documentation Retrieval**
+
+  - Documentation MUST be retrieved even for seemingly simple APIs
+  - Do not rely on previously cached knowledge for current implementations
+  - Never make assumptions about library interfaces, verify with current documentation
+
+- **Document First, Implement Second**
+
+  ```javascript
+  // ✅ DO: Review documentation BEFORE writing implementation code
+  // 1. Identify library need
+  // 2. Retrieve documentation
+  // 3. Review relevant sections
+  // 4. THEN implement solution
+
+  // ❌ DON'T: Implementation without documentation
+  const app = express(); // WRONG - Documentation not retrieved first
+  app.get("/", (req, res) => res.send("Hello"));
+  ```
+
+- **MUST Use Web Search When Documentation Is Unavailable**
+
+  - If Context7 cannot provide documentation or returns insufficient information, the agent MUST use the web search tool
+  - Always search for the most recent documentation as of mid-2025
+  - Verify the library version against the latest available release
+
+  ```javascript
+  // ✅ DO: Fallback to web search when Context7 fails
+  try {
+    // First attempt to use Context7
+    const libraryIdResponse =
+      (await mcp_context7_resolve-library-id({
+        libraryName: "some-library",
+      });
+
+    const docsResponse =
+      (await mcp_context7_get-library-docs({
+        context7CompatibleLibraryID: libraryIdResponse.libraryId,
+      });
+
+    // Check if documentation is insufficient
+    if (!docsResponse.content || docsResponse.content.length < 100) {
+      throw new Error("Insufficient documentation");
+    }
+  } catch (error) {
+    // If Context7 fails or returns insufficient docs, use web search
+    const webResults = await web_search({
+      search_term: "some-library latest documentation api reference mid 2025",
+      explanation: "Context7 documentation was unavailable or insufficient",
+    });
+
+    // Analyze multiple search results to get comprehensive information
+    const latestDocs = webResults.filter(
+      (result) =>
+        result.includes("documentation") ||
+        result.includes("api reference") ||
+        result.includes("guide")
+    );
+
+    // Use these web results to guide implementation
+  }
+
+  // ❌ DON'T: Skip web search when Context7 fails
+  // ❌ DON'T: Proceed with implementation without documentation
+  // ❌ DON'T: Use outdated web search results (verify they're current as of mid-2025)
+  ```
+
+## RULE: Task Management Workflow
+
+- **Task Structure**
+
+  - Tasks are defined in `tasks.md` with:
+
+  ### Task ID: 000
+
+  - **Title**: Example title
+  - **File**: example file path
+  - **Complete**: [ ]
+
+  #### Prompt:
+
+  ```
+  DETAILED PROMPT INCLUDING FILE PATH
+  ```
+
+- **Task Status Management**
+
+  ```javascript
+  // ✅ DO: Update task status when completing implementation
+  // Change status from `[ ]` to `[x]`
+  // Update the relevant Summary counts
+  ```
+
+### Task Implementation Guidelines
+
+- **Always review the project blueprint before implementing tasks**
+
+  ```javascript
+  // ✅ DO: Read the `docs/blueprint.md` file in the docs directory (if available)
+  // This provides essential context about the overall project architecture
+  ```
+
+- **Only modify task status and metadata in tasks.md**
+
+  ```javascript
+  // ✅ DO: Only update the "Complete" field of tasks
+  // ✅ DO: Update Summary counts (Total Tasks, Pending, Complete)
+
+  // ❌ DON'T: Modify task ids, titles, or prompts unless specifically requested
+  ```
+
+- **Implement each task according to its prompt and specified file**
+
+  ```javascript
+  // ✅ DO: Focus implementation on the file specified in the task
+  // ✅ DO: Follow the detailed instructions in the prompt
+  ```
+
+- **Always process tasks in their defined order unless specified**
+  ```javascript
+  // ✅ DO: Find the first task with Complete field as "[ ]" when asked for "next task"
+  // ✅ DO: If a specific task ID is provided, implement that task
+  ```
+
+### Task Creation Guidelines
+
+- **Adding New Tasks Based on User Requests**
+
+  ```javascript
+  // ✅ DO: Add tasks with properly structured format
+  // Add new task to tasks.md with all required fields and same format:
+  ### Task ID: 000
+
+  - **Title**: Example title
+  - **File**: example file path
+  - **Complete**: [ ]
+
+  #### Prompt:
+
+  ```
+
+  DETAILED PROMPT INCLUDING FILE PATH
+
+  ```
+
+  ```
+
+- **Task ID Assignment Rules**
+
+  - **End of List**: If adding to the end, use the next sequential number (001, 002, 003...)
+  - **Between Existing Tasks**: Use decimal extension format for insertion between tasks
+
+    ```
+    // ✅ DO: Use decimal extension when inserting between tasks
+    // Example: To add between Task 002 and Task 003:
+    //   - First insertion: 002-1
+    //   - Second insertion: 002-2
+    //   - For more granularity: 002-1-1, 002-1-2, etc.
+
+    // ❌ DON'T: Break sequence ordering
+    // ❌ DON'T: Use non-numeric or inconsistent formats
+    ```
+
+  - **Task ID must reflect implementation order** - Lower numbers should be implemented before higher numbers
+
+- **Task Creation Process**
+
+  1. **Analyze user request** for task requirements
+  2. **Determine optimal insertion point** based on logical implementation sequence
+  3. **Generate appropriate Task ID** (sequential or decimal extension)
+  4. **Create complete task entry** with all required fields
+  5. **Update Summary** in tasks.md (Total Tasks, Pending counts)
