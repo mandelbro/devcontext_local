@@ -8,7 +8,7 @@
 
 ## Introduction
 
-DevContext is a cutting-edge Model Context Protocol (MCP) server designed to provide developers with continuous, project-centric context awareness. Unlike traditional context systems, DevContext leverages sophisticated retrieval methods, focusing on keyword analysis, relationship graphs, and structured metadata to deliver highly relevant context during development.
+DevContext is a cutting-edge Model Context Protocol (MCP) server designed to provide developers with continuous, project-centric context awareness. Unlike traditional context systems, DevContext continuously learns from and adapts to your development patterns. DevContext leverages sophisticated retrieval methods, focusing on keyword analysis, relationship graphs, and structured metadata to deliver highly relevant context during development, understanding both your conversations and your codebase at a deeper level.
 
 The server operates with a database instance dedicated to a single project, eliminating cross-project complexity and ensuring performance with minimal resource requirements. DevContext builds a comprehensive understanding of your codebase - from repository structure down to individual functions - while continuously learning from and adapting to your development patterns.
 
