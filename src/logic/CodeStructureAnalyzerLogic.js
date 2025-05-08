@@ -7,6 +7,7 @@
 
 import * as acorn from "acorn";
 import { executeQuery } from "../db.js";
+import { logMessage } from "../utils/logger.js";
 
 /**
  * Builds an abstract syntax tree (AST) from code content
@@ -16,14 +17,19 @@ import { executeQuery } from "../db.js";
  * @returns {Promise<Object|null>} The AST node (for JS/TS) or null for unsupported languages
  */
 export async function buildAST(content, language) {
+  // Check if we're in MCP mode - control logging
+  const inMcpMode = process.env.MCP_MODE === "true";
+
   // Handle empty content
   if (!content || content.trim() === "") {
-    console.warn("Empty code content provided to buildAST");
+    if (!inMcpMode) {
+      logMessage("warn", "Empty code content provided to buildAST");
+    }
     return null;
   }
 
   // Normalize language to lowercase
-  const normalizedLanguage = language.toLowerCase();
+  const normalizedLanguage = language ? language.toLowerCase() : "unknown";
 
   // Handle JavaScript and TypeScript parsing with acorn
   if (
@@ -48,9 +54,26 @@ export async function buildAST(content, language) {
 
       // Parse the content using acorn
       const ast = acorn.parse(content, options);
+
+      // Log successful parsing in non-MCP mode
+      if (!inMcpMode) {
+        logMessage("debug", `Successfully parsed ${normalizedLanguage} code`, {
+          bodyType: ast.type,
+          bodyLength: ast.body ? ast.body.length : 0,
+        });
+      }
+
       return ast;
     } catch (error) {
-      console.error(`Error parsing ${normalizedLanguage} code:`, error.message);
+      if (!inMcpMode) {
+        logMessage("error", `Error parsing ${normalizedLanguage} code:`, {
+          message: error.message,
+          location: error.loc
+            ? `${error.loc.line}:${error.loc.column}`
+            : "unknown",
+        });
+      }
+
       // Return a structured error object instead of null
       return {
         error: true,
@@ -60,10 +83,15 @@ export async function buildAST(content, language) {
       };
     }
   } else {
-    // Log a message for unsupported languages
-    console.log(
-      `AST generation is not yet supported for ${normalizedLanguage}`
-    );
+    // For unsupported languages, try to use regex-based extraction
+    if (!inMcpMode) {
+      logMessage(
+        "info",
+        `AST generation not supported for ${normalizedLanguage}, using regex fallback`
+      );
+    }
+
+    // Return null to signal fallback to regex
     return null;
   }
 }

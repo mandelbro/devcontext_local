@@ -13,6 +13,7 @@ import { executeQuery } from "../db.js";
 import { tokenize, extractKeywords } from "./TextTokenizerLogic.js";
 import { addRelationship } from "./RelationshipContextManagerLogic.js";
 import { buildAST } from "./CodeStructureAnalyzerLogic.js";
+import { calculateImportanceScore } from "./ContextPrioritizerLogic.js";
 import { logMessage } from "../utils/logger.js";
 
 /**
@@ -194,27 +195,23 @@ function extractEntitiesWithRegex(content, language) {
  * @returns {Object} Extracted entities and relationships
  */
 function extractEntitiesFromAST(ast, content) {
+  // Check if we're in MCP mode - control logging
+  const inMcpMode = process.env.MCP_MODE === "true";
+
   const entities = [];
   const relationships = [];
   const idMap = new Map(); // Maps node to entity for relationship tracking
+  const lines = content.split("\n");
 
-  // Track visited nodes to prevent infinite recursion
-  const visitedNodes = new WeakSet();
+  if (!ast || ast.error) {
+    if (!inMcpMode) {
+      logMessage("warn", "Invalid AST provided to extractEntitiesFromAST", {
+        error: ast && ast.error ? ast.message : "No AST provided",
+      });
+    }
+    return { entities, relationships };
+  }
 
-  /**
-   * Create a new entity object
-   *
-   * @param {string} type - Entity type
-   * @param {string} name - Entity name
-   * @param {number} startPosition - Start position in source
-   * @param {number} endPosition - End position in source
-   * @param {number} startLine - Start line number
-   * @param {number} endLine - End line number
-   * @param {string} rawContent - Raw content of the entity
-   * @param {Object|null} parentEntity - Parent entity if exists
-   * @param {Object} customMetadata - Additional metadata
-   * @returns {Object} The created entity
-   */
   function createEntity(
     type,
     name,
@@ -234,674 +231,258 @@ function extractEntitiesFromAST(ast, content) {
       start_line: startLine,
       end_line: endLine,
       raw_content: rawContent,
+      parent: parentEntity,
       custom_metadata: customMetadata,
     };
 
     entities.push(entity);
 
-    // Set up parent-child relationship
-    if (parentEntity) {
-      relationships.push({
-        source: parentEntity,
-        target: entity,
-        type: "contains",
+    // Log entity extraction in non-MCP mode
+    if (!inMcpMode) {
+      logMessage("debug", `Extracted ${type} entity: ${name}`, {
+        lines: `${startLine}-${endLine}`,
+        size: rawContent.length,
       });
     }
 
     return entity;
   }
 
-  /**
-   * Process a node to extract relevant entity information
-   */
   function visit(node, parentNode = null, parentEntity = null, scope = null) {
-    if (!node || typeof node !== "object" || visitedNodes.has(node)) {
-      return;
-    }
+    if (!node || typeof node !== "object") return;
 
-    visitedNodes.add(node);
+    // Track current scope for nested entities
+    let currentScope = scope;
 
-    // Skip if node doesn't have location data
-    if (!node.loc) {
-      return;
-    }
-
-    // Get line information
-    const startLine = node.loc?.start?.line;
-    const endLine = node.loc?.end?.line;
-    const startPosition = node.start;
-    const endPosition = node.end;
-    const rawContent = content.substring(startPosition, endPosition);
-
-    // Create currentEntity to track the entity for this node
-    let currentEntity = null;
-
-    // Extract entities based on node type
+    // Process node based on type
     switch (node.type) {
-      case "FunctionDeclaration": {
-        const name = node.id?.name || "anonymous";
-        const params = node.params?.map((p) =>
-          p.type === "Identifier" ? p.name : "param"
-        );
-
-        currentEntity = createEntity(
-          "function",
-          name,
-          startPosition,
-          endPosition,
-          startLine,
-          endLine,
-          rawContent,
-          parentEntity,
-          {
-            ast_node_type: node.type,
-            params: params || [],
-            is_async: node.async || false,
-            is_generator: node.generator || false,
-          }
-        );
-
-        // Store in idMap for relationship tracking
-        idMap.set(node, currentEntity);
-
-        // Visit function body with this entity as parent
-        if (node.body) {
-          visit(node.body, node, currentEntity, name);
+      case "Program":
+        // Process each statement in the program body
+        if (node.body && Array.isArray(node.body)) {
+          node.body.forEach((stmt) =>
+            visit(stmt, node, parentEntity, "global")
+          );
         }
         break;
-      }
 
+      case "FunctionDeclaration":
+        {
+          const name = node.id ? node.id.name : "anonymous";
+          const startLine = node.loc.start.line;
+          const endLine = node.loc.end.line;
+          const startPosition = node.start;
+          const endPosition = node.end;
+          const rawContent = content.substring(startPosition, endPosition);
+
+          // Get function params
+          const params = node.params.map((p) => p.name || "unnamed");
+
+          // Create function entity
+          const functionEntity = createEntity(
+            "function",
+            name,
+            startPosition,
+            endPosition,
+            startLine,
+            endLine,
+            rawContent,
+            parentEntity,
+            { params }
+          );
+
+          // Create relationship to parent if exists
+          if (parentEntity) {
+            relationships.push({
+              source: parentEntity,
+              target: functionEntity,
+              type: "contains",
+            });
+          }
+
+          // Process function body with this function as parent
+          if (node.body) {
+            visit(node.body, node, functionEntity, name);
+          }
+        }
+        break;
+
+      case "ClassDeclaration":
+      case "ClassExpression":
+        {
+          const name = node.id ? node.id.name : "AnonymousClass";
+          const startLine = node.loc.start.line;
+          const endLine = node.loc.end.line;
+          const startPosition = node.start;
+          const endPosition = node.end;
+          const rawContent = content.substring(startPosition, endPosition);
+
+          // Create class entity
+          const classEntity = createEntity(
+            "class",
+            name,
+            startPosition,
+            endPosition,
+            startLine,
+            endLine,
+            rawContent,
+            parentEntity
+          );
+
+          // Create relationship to parent if exists
+          if (parentEntity) {
+            relationships.push({
+              source: parentEntity,
+              target: classEntity,
+              type: "contains",
+            });
+          }
+
+          // Process class body with this class as parent
+          if (node.body && node.body.body) {
+            node.body.body.forEach((member) => {
+              visit(member, node, classEntity, name);
+            });
+          }
+        }
+        break;
+
+      case "MethodDefinition":
+        {
+          const name = node.key.name || node.key.value || "unnamed";
+          const startLine = node.loc.start.line;
+          const endLine = node.loc.end.line;
+          const startPosition = node.start;
+          const endPosition = node.end;
+          const rawContent = content.substring(startPosition, endPosition);
+
+          // Create method entity
+          const methodEntity = createEntity(
+            "method",
+            name,
+            startPosition,
+            endPosition,
+            startLine,
+            endLine,
+            rawContent,
+            parentEntity,
+            { kind: node.kind } // constructor, method, get/set
+          );
+
+          // Create relationship to parent class
+          if (parentEntity) {
+            relationships.push({
+              source: parentEntity,
+              target: methodEntity,
+              type: "contains",
+            });
+          }
+
+          // Process method body with this method as parent
+          if (node.value && node.value.body) {
+            visit(node.value.body, node, methodEntity, `${scope}.${name}`);
+          }
+        }
+        break;
+
+      case "ArrowFunctionExpression":
       case "FunctionExpression":
-      case "ArrowFunctionExpression": {
-        // Try to infer name from parent if this is a variable declaration
-        let name = "anonymous";
-        let functionType = "function_expression";
-
-        if (
-          parentNode &&
-          parentNode.type === "VariableDeclarator" &&
-          parentNode.id
-        ) {
-          name = parentNode.id.name;
-          functionType = "function";
-        } else if (
-          parentNode &&
-          parentNode.type === "AssignmentExpression" &&
-          parentNode.left
-        ) {
-          if (parentNode.left.type === "Identifier") {
-            name = parentNode.left.name;
-            functionType = "function";
-          } else if (
-            parentNode.left.type === "MemberExpression" &&
-            parentNode.left.property
+        {
+          // Only create entities for named function expressions or arrow functions assigned to variables
+          if (
+            parentNode &&
+            (parentNode.type === "VariableDeclarator" ||
+              parentNode.type === "AssignmentExpression")
           ) {
-            name = parentNode.left.property.name;
-            functionType = "method";
-          }
-        } else if (
-          parentNode &&
-          parentNode.type === "Property" &&
-          parentNode.key
-        ) {
-          name = parentNode.key.name || parentNode.key.value || "anonymous";
-          functionType = "method";
-        } else if (
-          parentNode &&
-          parentNode.type === "MethodDefinition" &&
-          parentNode.key
-        ) {
-          name = parentNode.key.name || "anonymous";
-          functionType = "method";
-        }
+            let name = "anonymous";
 
-        const params = node.params?.map((p) =>
-          p.type === "Identifier" ? p.name : "param"
-        );
-
-        currentEntity = createEntity(
-          functionType,
-          name,
-          startPosition,
-          endPosition,
-          startLine,
-          endLine,
-          rawContent,
-          parentEntity,
-          {
-            ast_node_type: node.type,
-            params: params || [],
-            is_async: node.async || false,
-            is_generator: node.generator || false,
-            is_arrow: node.type === "ArrowFunctionExpression",
-          }
-        );
-
-        idMap.set(node, currentEntity);
-
-        // Visit function body with this entity as parent
-        if (node.body) {
-          visit(node.body, node, currentEntity, name);
-        }
-        break;
-      }
-
-      case "ClassDeclaration": {
-        const name = node.id?.name || "anonymous";
-
-        currentEntity = createEntity(
-          "class",
-          name,
-          startPosition,
-          endPosition,
-          startLine,
-          endLine,
-          rawContent,
-          parentEntity,
-          {
-            ast_node_type: node.type,
-          }
-        );
-
-        idMap.set(node, currentEntity);
-
-        // If this class extends another, record the relationship
-        if (node.superClass) {
-          if (node.superClass.type === "Identifier") {
-            relationships.push({
-              source: currentEntity,
-              target: { name: node.superClass.name, type: "class" },
-              type: "extends",
-            });
-          }
-        }
-
-        // Visit class body with this entity as parent
-        if (node.body) {
-          visit(node.body, node, currentEntity, name);
-        }
-        break;
-      }
-
-      case "ClassExpression": {
-        // Try to infer name from parent if possible
-        let name = node.id?.name || "anonymous";
-        if (
-          parentNode &&
-          parentNode.type === "VariableDeclarator" &&
-          parentNode.id
-        ) {
-          name = parentNode.id.name;
-        }
-
-        currentEntity = createEntity(
-          "class",
-          name,
-          startPosition,
-          endPosition,
-          startLine,
-          endLine,
-          rawContent,
-          parentEntity,
-          {
-            ast_node_type: node.type,
-          }
-        );
-
-        idMap.set(node, currentEntity);
-
-        // If this class extends another, record the relationship
-        if (node.superClass) {
-          if (node.superClass.type === "Identifier") {
-            relationships.push({
-              source: currentEntity,
-              target: { name: node.superClass.name, type: "class" },
-              type: "extends",
-            });
-          }
-        }
-
-        // Visit class body with this entity as parent
-        if (node.body) {
-          visit(node.body, node, currentEntity, name);
-        }
-        break;
-      }
-
-      case "MethodDefinition": {
-        const name = node.key?.name || node.key?.value || "anonymous";
-        const kind = node.kind || "method"; // "method", "constructor", "get", "set"
-
-        currentEntity = createEntity(
-          kind === "constructor" ? "constructor" : "method",
-          name,
-          startPosition,
-          endPosition,
-          startLine,
-          endLine,
-          rawContent,
-          parentEntity,
-          {
-            ast_node_type: node.type,
-            kind: kind,
-            is_static: !!node.static,
-            is_async: node.value?.async || false,
-            is_generator: node.value?.generator || false,
-          }
-        );
-
-        idMap.set(node, currentEntity);
-
-        // Visit method value/body with this entity as parent
-        if (node.value) {
-          visit(node.value, node, currentEntity, name);
-        }
-        break;
-      }
-
-      case "VariableDeclaration": {
-        // Don't create an entity for the declaration itself, just visit the declarators
-        node.declarations.forEach((declarator) => {
-          visit(declarator, node, parentEntity, scope);
-        });
-        break;
-      }
-
-      case "VariableDeclarator": {
-        if (node.id && node.id.type === "Identifier") {
-          const name = node.id.name;
-
-          // Don't create entities for simple variable assignments to primitives
-          // unless they have a function or object expression as initializer
-          let shouldCreateEntity = false;
-          let entityType = "variable";
-
-          if (!node.init) {
-            shouldCreateEntity = true; // Declarations without initializers
-          } else if (
-            [
-              "FunctionExpression",
-              "ArrowFunctionExpression",
-              "ClassExpression",
-              "ObjectExpression",
-              "NewExpression",
-            ].includes(node.init.type)
-          ) {
-            shouldCreateEntity = true;
-            if (node.init.type === "ObjectExpression") {
-              entityType = "object";
+            // Try to determine name from parent
+            if (parentNode.id && parentNode.id.name) {
+              name = parentNode.id.name;
+            } else if (parentNode.left && parentNode.left.name) {
+              name = parentNode.left.name;
             }
-          } else if (
-            node.init.type === "Literal" &&
-            typeof node.init.value === "object"
-          ) {
-            shouldCreateEntity = true;
-            entityType = "object";
-          } else if (parentEntity && parentEntity.type !== "variable") {
-            // Always create if inside a function/class
-            shouldCreateEntity = true;
-          }
 
-          if (shouldCreateEntity) {
-            currentEntity = createEntity(
-              entityType,
+            const startLine = node.loc.start.line;
+            const endLine = node.loc.end.line;
+            const startPosition = node.start;
+            const endPosition = node.end;
+            const rawContent = content.substring(startPosition, endPosition);
+
+            // Create function entity
+            const functionEntity = createEntity(
+              "function",
               name,
               startPosition,
               endPosition,
               startLine,
               endLine,
               rawContent,
-              parentEntity,
-              {
-                ast_node_type: node.type,
-                variable_kind: parentNode?.kind || "var", // 'var', 'let', or 'const'
-              }
+              parentEntity
             );
 
-            idMap.set(node, currentEntity);
-          }
-        }
-
-        // Visit initializer
-        if (node.init) {
-          visit(node.init, node, parentEntity || currentEntity, scope);
-        }
-        break;
-      }
-
-      case "ImportDeclaration": {
-        // Create an entity for the import statement
-        const source = node.source.value;
-        const specifiers = node.specifiers.map((specifier) => {
-          if (specifier.type === "ImportDefaultSpecifier") {
-            return { type: "default", name: specifier.local.name };
-          } else if (specifier.type === "ImportNamespaceSpecifier") {
-            return { type: "namespace", name: specifier.local.name };
+            // Process function body with this function as parent
+            if (node.body) {
+              visit(node.body, node, functionEntity, name);
+            }
           } else {
-            return {
-              type: "named",
-              name: specifier.local.name,
-              imported: specifier.imported?.name || specifier.local.name,
-            };
+            // For anonymous functions, just process the body without creating an entity
+            if (node.body) {
+              visit(node.body, node, parentEntity, scope);
+            }
           }
-        });
-
-        currentEntity = createEntity(
-          "import",
-          source,
-          startPosition,
-          endPosition,
-          startLine,
-          endLine,
-          rawContent,
-          parentEntity,
-          {
-            ast_node_type: node.type,
-            specifiers: specifiers,
-          }
-        );
-
-        idMap.set(node, currentEntity);
-
-        // Add relationships for the imports
-        specifiers.forEach((spec) => {
-          relationships.push({
-            source: currentEntity,
-            target: { name: spec.name, type: "imported" },
-            type: "imports",
-            metadata: {
-              source_module: source,
-              import_type: spec.type,
-              original_name: spec.imported,
-            },
-          });
-        });
-
-        break;
-      }
-
-      case "ExportNamedDeclaration": {
-        // Create an entity for the export statement
-        let name = "named_export";
-        if (node.declaration) {
-          if (
-            node.declaration.type === "FunctionDeclaration" ||
-            node.declaration.type === "ClassDeclaration"
-          ) {
-            name = node.declaration.id?.name || "anonymous";
-          } else if (
-            node.declaration.type === "VariableDeclaration" &&
-            node.declaration.declarations.length > 0
-          ) {
-            name = node.declaration.declarations[0].id?.name || "anonymous";
-          }
-        } else if (node.specifiers && node.specifiers.length > 0) {
-          name = node.specifiers
-            .map((s) => s.exported?.name || s.local?.name || "anonymous")
-            .join(",");
         }
+        break;
 
-        currentEntity = createEntity(
-          "export",
-          name,
-          startPosition,
-          endPosition,
-          startLine,
-          endLine,
-          rawContent,
-          parentEntity,
-          {
-            ast_node_type: node.type,
-            source: node.source?.value,
-          }
-        );
+      case "BlockStatement":
+        // Process each statement in the block
+        if (node.body && Array.isArray(node.body)) {
+          node.body.forEach((stmt) => visit(stmt, node, parentEntity, scope));
+        }
+        break;
 
-        idMap.set(node, currentEntity);
+      // Handle variable declarations which might contain functions or classes
+      case "VariableDeclaration":
+        if (node.declarations) {
+          node.declarations.forEach((decl) =>
+            visit(decl, node, parentEntity, scope)
+          );
+        }
+        break;
 
-        // Visit the declaration
+      case "VariableDeclarator":
+        // Process initializer, which might be a function/class expression
+        if (node.init) {
+          visit(node.init, node, parentEntity, scope);
+        }
+        break;
+
+      case "ExportNamedDeclaration":
+      case "ExportDefaultDeclaration":
+        // Process the exported declaration
         if (node.declaration) {
           visit(node.declaration, node, parentEntity, scope);
         }
-
-        // Add relationships for the exports
-        if (node.specifiers) {
-          node.specifiers.forEach((spec) => {
-            if (spec.local && spec.exported) {
-              relationships.push({
-                source: currentEntity,
-                target: { name: spec.local.name, type: "exported" },
-                type: "exports",
-                metadata: {
-                  exported_as: spec.exported.name,
-                  source_module: node.source?.value,
-                },
-              });
-            }
-          });
-        }
-
         break;
-      }
 
-      case "ExportDefaultDeclaration": {
-        // Get name from declaration if possible
-        let name = "default";
-        if (node.declaration) {
-          if (
-            node.declaration.type === "FunctionDeclaration" ||
-            node.declaration.type === "ClassDeclaration"
-          ) {
-            name = node.declaration.id?.name || "default";
-          } else if (node.declaration.type === "Identifier") {
-            name = node.declaration.name;
-          }
-        }
-
-        currentEntity = createEntity(
-          "export",
-          name,
-          startPosition,
-          endPosition,
-          startLine,
-          endLine,
-          rawContent,
-          parentEntity,
-          {
-            ast_node_type: node.type,
-            is_default: true,
-          }
-        );
-
-        idMap.set(node, currentEntity);
-
-        // Visit the declaration
-        if (node.declaration) {
-          visit(node.declaration, node, parentEntity, scope);
-        }
-
-        // Add relationship
-        relationships.push({
-          source: currentEntity,
-          target: { name: name, type: "exported" },
-          type: "exports",
-          metadata: { is_default: true },
-        });
-
-        break;
-      }
-
-      case "InterfaceDeclaration": {
-        // TypeScript interface
-        const name = node.id?.name || "anonymous";
-
-        currentEntity = createEntity(
-          "interface",
-          name,
-          startPosition,
-          endPosition,
-          startLine,
-          endLine,
-          rawContent,
-          parentEntity,
-          {
-            ast_node_type: node.type,
-          }
-        );
-
-        idMap.set(node, currentEntity);
-
-        // Add extends relationships
-        if (node.extends) {
-          node.extends.forEach((ext) => {
-            if (ext.expression && ext.expression.type === "Identifier") {
-              relationships.push({
-                source: currentEntity,
-                target: { name: ext.expression.name, type: "interface" },
-                type: "extends",
-              });
-            }
-          });
-        }
-
-        // Visit the interface body
-        if (node.body) {
-          visit(node.body, node, currentEntity, name);
-        }
-
-        break;
-      }
-
-      case "TypeAliasDeclaration": {
-        // TypeScript type alias
-        const name = node.id?.name || "anonymous";
-
-        currentEntity = createEntity(
-          "type_alias",
-          name,
-          startPosition,
-          endPosition,
-          startLine,
-          endLine,
-          rawContent,
-          parentEntity,
-          {
-            ast_node_type: node.type,
-          }
-        );
-
-        idMap.set(node, currentEntity);
-
-        // Visit the type annotation
-        if (node.typeAnnotation) {
-          visit(node.typeAnnotation, node, currentEntity, name);
-        }
-
-        break;
-      }
-
-      case "EnumDeclaration": {
-        // TypeScript enum
-        const name = node.id?.name || "anonymous";
-
-        currentEntity = createEntity(
-          "enum",
-          name,
-          startPosition,
-          endPosition,
-          startLine,
-          endLine,
-          rawContent,
-          parentEntity,
-          {
-            ast_node_type: node.type,
-          }
-        );
-
-        idMap.set(node, currentEntity);
-
-        // Visit the enum members
-        if (node.members) {
-          node.members.forEach((member) => {
-            visit(member, node, currentEntity, name);
-          });
-        }
-
-        break;
-      }
-
-      case "CallExpression": {
-        // Record function call relationships
-        if (parentEntity) {
-          if (node.callee.type === "Identifier") {
-            relationships.push({
-              source: parentEntity,
-              target: { name: node.callee.name, type: "function" },
-              type: "calls",
-            });
-          } else if (node.callee.type === "MemberExpression") {
-            if (
-              node.callee.property &&
-              node.callee.property.type === "Identifier"
-            ) {
-              relationships.push({
-                source: parentEntity,
-                target: { name: node.callee.property.name, type: "method" },
-                type: "calls",
-                metadata: {
-                  object:
-                    node.callee.object.type === "Identifier"
-                      ? node.callee.object.name
-                      : null,
-                },
-              });
-            }
-          }
-        }
-
-        // Visit callee and arguments
-        if (node.callee) {
-          visit(node.callee, node, parentEntity, scope);
-        }
-
-        if (node.arguments) {
-          node.arguments.forEach((arg) => {
-            visit(arg, node, parentEntity, scope);
-          });
-        }
-
-        break;
-      }
-
-      // For nodes without explicit handlers, recursively visit child properties
-      default: {
+      default:
+        // For other node types, just traverse their children
         for (const key in node) {
-          const child = node[key];
-
-          // Skip non-AST properties
-          if (
-            key === "type" ||
-            key === "loc" ||
-            key === "range" ||
-            key === "parent"
-          ) {
-            continue;
-          }
-
-          if (Array.isArray(child)) {
-            // For arrays (like body), visit each element
-            for (const item of child) {
-              visit(item, node, parentEntity || currentEntity, scope);
+          if (node.hasOwnProperty(key)) {
+            const child = node[key];
+            if (child && typeof child === "object") {
+              if (Array.isArray(child)) {
+                child.forEach((item) => visit(item, node, parentEntity, scope));
+              } else {
+                visit(child, node, parentEntity, scope);
+              }
             }
-          } else if (child && typeof child === "object") {
-            // Visit child node
-            visit(child, node, parentEntity || currentEntity, scope);
           }
         }
-      }
+        break;
     }
   }
 
-  // Start the traversal from the root node
+  // Start traversal from the root
   visit(ast);
 
   return { entities, relationships };
@@ -917,6 +498,13 @@ function extractEntitiesFromAST(ast, content) {
  */
 export async function indexCodeFile(filePath, fileContent, languageHint) {
   try {
+    // Check if we're in MCP mode - never log in MCP mode
+    const inMcpMode = process.env.MCP_MODE === "true";
+
+    if (!inMcpMode) {
+      logMessage("info", `Indexing code file ${filePath}`);
+    }
+
     // Calculate content hash
     const contentHash = calculateContentHash(fileContent);
 
@@ -926,31 +514,33 @@ export async function indexCodeFile(filePath, fileContent, languageHint) {
     // Detect or use provided language
     const language = detectLanguage(filePath, languageHint);
 
-    // Check if file already exists and is unchanged
-    const existingFileQuery = `
-      SELECT entity_id, content_hash 
-      FROM code_entities 
-      WHERE file_path = ? AND entity_type = 'file'
-    `;
+    // Check if file already exists
+    const existingFile = await executeQuery(
+      `SELECT entity_id, content_hash FROM code_entities WHERE file_path = ? AND entity_type = 'file'`,
+      [filePath]
+    );
 
-    const existingFile = await executeQuery(existingFileQuery, [filePath]);
-
+    // Initialize file entity ID
     let fileEntityId;
 
-    if (existingFile && existingFile.length > 0) {
-      fileEntityId = existingFile[0].entity_id;
+    // Update or create file entity
+    if (existingFile.rows && existingFile.rows.length > 0) {
+      fileEntityId = existingFile.rows[0].entity_id;
 
-      // If content hash matches, file is unchanged
+      // Skip indexing if content hash matches
       if (existingFile[0].content_hash === contentHash) {
         logMessage("info", `File ${filePath} is unchanged, skipping indexing`);
-        return;
+        return fileEntityId;
       }
 
       // Update existing file entity
       await executeQuery(
         `
-        UPDATE code_entities
-        SET raw_content = ?, content_hash = ?, language = ?, last_modified_at = CURRENT_TIMESTAMP
+        UPDATE code_entities SET
+          raw_content = ?,
+          content_hash = ?,
+          language = ?,
+          last_modified_at = CURRENT_TIMESTAMP
         WHERE entity_id = ?
       `,
         [fileContent, contentHash, language, fileEntityId]
@@ -964,24 +554,42 @@ export async function indexCodeFile(filePath, fileContent, languageHint) {
       `,
         [fileEntityId]
       );
-
-      // Delete keywords for the file
-      await executeQuery(
-        `
-        DELETE FROM entity_keywords
-        WHERE entity_id = ?
-      `,
-        [fileEntityId]
-      );
     } else {
-      // Create new file entity
+      // Create a new file entity
       fileEntityId = uuidv4();
+
+      // Calculate importance score for the file entity
+      let importanceScore = 1.0; // Default score
+      try {
+        importanceScore = await calculateImportanceScore({
+          entity_id: fileEntityId,
+          entity_type: "file",
+          file_path: filePath,
+          name: filename,
+          raw_content: fileContent,
+          language: language,
+        });
+      } catch (scoreError) {
+        if (!inMcpMode) {
+          logMessage(
+            "warn",
+            `Error calculating importance score for ${filePath}: ${scoreError.message}`
+          );
+        }
+      }
 
       await executeQuery(
         `
         INSERT INTO code_entities (
-          entity_id, file_path, entity_type, name, content_hash, raw_content, language
-        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+          entity_id,
+          file_path,
+          entity_type,
+          name,
+          content_hash,
+          raw_content,
+          language,
+          importance_score
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `,
         [
           fileEntityId,
@@ -991,6 +599,7 @@ export async function indexCodeFile(filePath, fileContent, languageHint) {
           contentHash,
           fileContent,
           language,
+          importanceScore,
         ]
       );
     }
@@ -999,167 +608,187 @@ export async function indexCodeFile(filePath, fileContent, languageHint) {
     let codeEntities = [];
     let relationships = [];
 
-    // For JavaScript/TypeScript, use AST-based extraction
+    // Language-specific processing
     if (language === "javascript" || language === "typescript") {
-      const ast = await buildAST(fileContent, language);
-
-      if (ast && !ast.error) {
-        const extracted = extractEntitiesFromAST(ast, fileContent);
-        codeEntities = extracted.entities;
-        relationships = extracted.relationships;
-      } else {
-        logMessage("error", `Error building AST for ${filePath}:`, {
-          error: ast?.error || "Unknown error",
-        });
-        // Fallback to regex-based extraction for JS/TS with parsing errors
-        codeEntities = extractEntitiesWithRegex(fileContent, language);
+      try {
+        // Parse content using Acorn or a similar parser
+        const ast = buildAST(fileContent, language);
+        const { entities, entityRelationships } = extractEntitiesFromAST(
+          ast,
+          fileContent
+        );
+        codeEntities = entities;
+        relationships = entityRelationships;
+      } catch (parseError) {
+        if (!inMcpMode) {
+          logMessage(
+            "warn",
+            `Error parsing ${language} file ${filePath}: ${parseError.message}`
+          );
+          // Fallback to regex for basic extraction on parse error
+          codeEntities = extractEntitiesWithRegex(fileContent, language);
+        }
       }
-    }
-    // For other languages, use regex-based extraction
-    else {
+    } else {
+      // For other languages, use regex extraction
       codeEntities = extractEntitiesWithRegex(fileContent, language);
     }
 
-    // Prepare batch operations for better performance
-    const entityInsertPromises = [];
-    const keywordInsertPromises = [];
-
-    // Prepare entity batch values
+    // Save extracted entities and relationships to database
     for (const entity of codeEntities) {
       const entityId = uuidv4();
-      entity.db_entity_id = entityId; // Store for relationship processing
+      entity.id = entityId;
 
-      const customMetadataJson = entity.custom_metadata
-        ? JSON.stringify(entity.custom_metadata)
-        : null;
+      // Calculate importance score for the entity
+      let importanceScore = 1.0; // Default score
+      try {
+        // Create a proper entity object for scoring
+        const entityForScoring = {
+          entity_id: entityId,
+          entity_type: entity.type,
+          file_path: filePath,
+          name: entity.name,
+          raw_content: entity.raw_content,
+          start_line: entity.start_line,
+          end_line: entity.end_line,
+          language: language,
+          parent_entity_id: fileEntityId,
+        };
 
-      // Add entity insert operation to batch
-      entityInsertPromises.push(
-        executeQuery(
-          `
-          INSERT INTO code_entities (
-            entity_id, parent_entity_id, file_path, entity_type, name, 
-            start_line, end_line, raw_content, language, custom_metadata
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-          `,
-          [
-            entityId,
-            fileEntityId, // All sub-entities have the file as parent by default
-            filePath,
-            entity.type,
-            entity.name,
-            entity.start_line,
-            entity.end_line,
-            entity.raw_content,
-            language,
-            customMetadataJson,
-          ]
-        )
+        importanceScore = await calculateImportanceScore(entityForScoring);
+      } catch (scoreError) {
+        if (!inMcpMode) {
+          logMessage(
+            "warn",
+            `Error calculating importance score for entity ${entity.name}: ${scoreError.message}`
+          );
+        }
+      }
+
+      // Generate summary for the entity
+      let summary = null;
+      try {
+        // Import dynamically to avoid circular dependencies
+        const { summarizeCodeEntity } = await import(
+          "./ContextCompressorLogic.js"
+        );
+
+        // Create entity object for summarization - must include necessary properties
+        const entityForSummary = {
+          entity_type: entity.type,
+          name: entity.name,
+          raw_content: entity.raw_content,
+        };
+
+        // Generate summary with a reasonable character limit (increased from 500 to 1000)
+        summary = summarizeCodeEntity(entityForSummary, 1000);
+
+        // Log summary generation for debugging (only in non-MCP mode)
+        if (!inMcpMode && summary) {
+          logMessage(
+            "debug",
+            `Generated summary for ${entity.type} '${entity.name}' (${summary.length} chars)`
+          );
+        }
+      } catch (summaryError) {
+        if (!inMcpMode) {
+          logMessage(
+            "warn",
+            `Error generating summary for entity ${entity.name}: ${summaryError.message}`
+          );
+        }
+        // Continue without a summary
+      }
+
+      // Save entity to database
+      await executeQuery(
+        `
+        INSERT INTO code_entities (
+          entity_id,
+          parent_entity_id,
+          file_path,
+          entity_type,
+          name,
+          start_line,
+          end_line,
+          raw_content,
+          language,
+          summary,
+          importance_score
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+        [
+          entityId,
+          fileEntityId,
+          filePath,
+          entity.type,
+          entity.name,
+          entity.start_line,
+          entity.end_line,
+          entity.raw_content,
+          language,
+          summary,
+          importanceScore,
+        ]
       );
 
-      // Process content for keywords
-      const tokens = tokenize(entity.raw_content);
-      const keywords = extractKeywords(tokens, 20, language);
+      // Extract keywords for the entity
+      try {
+        const keywords = extractKeywords(entity.raw_content);
 
-      // Add keyword insert operations to batch
-      keywords.forEach((keyword) => {
-        keywordInsertPromises.push(
-          executeQuery(
+        // Save keywords
+        for (const keyword of keywords) {
+          await executeQuery(
             `
             INSERT INTO entity_keywords (
-              entity_id, keyword, term_frequency, weight, keyword_type
-            ) VALUES (?, ?, ?, ?, ?)
-            `,
-            [
-              entityId,
-              keyword.keyword,
-              keyword.score || 1.0,
-              keyword.score || 1.0,
-              "term",
-            ]
-          )
-        );
-      });
-    }
-
-    // Execute entity inserts in parallel
-    if (entityInsertPromises.length > 0) {
-      await Promise.all(entityInsertPromises);
-      logMessage(
-        "debug",
-        `Inserted ${entityInsertPromises.length} entities for ${filePath}`
-      );
-    }
-
-    // Execute keyword inserts in parallel
-    if (keywordInsertPromises.length > 0) {
-      await Promise.all(keywordInsertPromises);
-      logMessage(
-        "debug",
-        `Inserted ${keywordInsertPromises.length} keywords for ${filePath}`
-      );
-    }
-
-    // Process relationships
-    const relationshipPromises = [];
-
-    for (const rel of relationships) {
-      // Skip incomplete relationships
-      if (!rel.source || !rel.target) continue;
-
-      const sourceId = rel.source.db_entity_id;
-      const targetId = rel.target.db_entity_id;
-
-      if (rel.type === "contains" && sourceId && targetId) {
-        relationshipPromises.push(
-          executeQuery(
-            `
-            UPDATE code_entities
-            SET parent_entity_id = ?
-            WHERE entity_id = ?
-            `,
-            [sourceId, targetId]
-          )
-        );
-      } else if (sourceId && targetId) {
-        relationshipPromises.push(
-          addRelationship(sourceId, targetId, rel.type, 1.0, rel.metadata || {})
-        );
-      } else if (sourceId && !targetId && rel.target.name) {
-        relationshipPromises.push(
-          (async () => {
-            const targetEntity = await executeQuery(
-              `SELECT entity_id FROM code_entities WHERE name = ? AND entity_type = ?`,
-              [rel.target.name, rel.target.type]
-            );
-
-            if (targetEntity && targetEntity.length > 0) {
-              await addRelationship(
-                sourceId,
-                targetEntity[0].entity_id,
-                rel.type,
-                1.0,
-                rel.metadata || {}
-              );
-            }
-          })()
-        );
+              entity_id,
+              keyword,
+              term_frequency,
+              keyword_type
+            ) VALUES (?, ?, ?, ?)
+            ON CONFLICT(entity_id, keyword, keyword_type) DO UPDATE SET
+              term_frequency = excluded.term_frequency
+          `,
+            [entityId, keyword.term, keyword.frequency, "extracted"]
+          );
+        }
+      } catch (keywordError) {
+        if (!inMcpMode) {
+          logMessage(
+            "warn",
+            `Error extracting keywords for ${entity.name}: ${keywordError.message}`
+          );
+        }
+        // Continue despite keyword extraction errors
       }
     }
 
-    // Execute relationship operations in parallel
-    if (relationshipPromises.length > 0) {
-      await Promise.all(relationshipPromises);
-      logMessage(
-        "debug",
-        `Processed ${relationshipPromises.length} relationships for ${filePath}`
-      );
+    // Save relationships
+    for (const rel of relationships) {
+      try {
+        if (rel.source && rel.target) {
+          await addRelationship(
+            rel.source.id,
+            rel.target.id,
+            rel.type,
+            rel.metadata
+          );
+        }
+      } catch (relError) {
+        if (!inMcpMode) {
+          logMessage("warn", `Error saving relationship: ${relError.message}`);
+        }
+        // Continue despite relationship errors
+      }
     }
 
-    logMessage("info", `Successfully indexed file ${filePath}`);
+    return fileEntityId;
   } catch (error) {
-    logMessage("error", `Error indexing file ${filePath}:`, { error: error });
-    throw error;
+    if (process.env.MCP_MODE === "true") {
+      throw new Error(); // Empty error in MCP mode to prevent logging
+    } else {
+      throw new Error(`Error indexing file ${filePath}: ${error.message}`);
+    }
   }
 }
 

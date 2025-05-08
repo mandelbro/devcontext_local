@@ -52,6 +52,136 @@ import { CONTEXT_DECAY_RATE } from "../config.js";
  */
 
 /**
+ * Calculate an importance score for a code entity based on its characteristics.
+ * This score is used for prioritizing which entities to include in context.
+ *
+ * @param {CodeEntity} entity - The code entity to score
+ * @returns {Promise<number>} Importance score between 0 and 10
+ */
+export async function calculateImportanceScore(entity) {
+  if (!entity) return 1.0; // Default score if entity is invalid
+
+  try {
+    // 1. Base score by entity type
+    const typeScores = {
+      class: 8.0,
+      interface: 7.5,
+      function: 7.0,
+      method: 6.5,
+      file: 6.0,
+      variable: 5.0,
+      constant: 5.0,
+      comment_block: 4.0,
+    };
+
+    const entityType = (entity.entity_type || "").toLowerCase();
+    let score = typeScores[entityType] || 5.0; // Default to 5.0 if type unknown
+
+    // 2. Adjust based on content size/complexity
+    if (entity.raw_content) {
+      const contentLength = entity.raw_content.length;
+      const lineCount = entity.raw_content.split("\n").length;
+
+      // Small bonus for larger entities (but not too much)
+      // Logarithmic scale to prevent extremely large files from dominating
+      const sizeBonus = Math.min(2.0, Math.log10(contentLength / 100)) * 0.5;
+      score += sizeBonus;
+
+      // Bonus for complexity (rough approximation based on length and patterns)
+      if (
+        entity.raw_content.includes("if") ||
+        entity.raw_content.includes("for") ||
+        entity.raw_content.includes("while") ||
+        entity.raw_content.includes("switch")
+      ) {
+        score += 0.5; // Basic complexity bonus
+      }
+    }
+
+    // 3. Adjust based on references to this entity
+    try {
+      const referenceQuery = `
+        SELECT COUNT(*) as ref_count 
+        FROM code_relationships 
+        WHERE target_entity_id = ? AND relationship_type = 'references'
+      `;
+
+      const references = await executeQuery(referenceQuery, [entity.entity_id]);
+
+      if (references && references.rows && references.rows.length > 0) {
+        const refCount = parseInt(references.rows[0].ref_count) || 0;
+        // Logarithmic scale to prevent highly referenced entities from completely dominating
+        const refBonus = Math.min(1.5, Math.log10(refCount + 1));
+        score += refBonus;
+      }
+    } catch (error) {
+      // Silently continue without reference bonus if query fails
+      console.warn(
+        `Error fetching references for entity ${entity.entity_id}:`,
+        error.message
+      );
+    }
+
+    // 4. Adjust based on recency
+    const now = new Date();
+    if (entity.last_modified_at) {
+      const lastModified = new Date(entity.last_modified_at);
+      const daysSinceModified = (now - lastModified) / (1000 * 60 * 60 * 24);
+
+      // Recently modified entities get a bonus that decays over time
+      // Full bonus for the first day, decaying to zero after 30 days
+      const recencyBonus = Math.max(0, 1.0 - daysSinceModified / 30);
+      score += recencyBonus;
+    }
+
+    if (entity.last_accessed_at) {
+      const lastAccessed = new Date(entity.last_accessed_at);
+      const daysSinceAccessed = (now - lastAccessed) / (1000 * 60 * 60 * 24);
+
+      // Recently accessed entities get a smaller bonus
+      // Full bonus for the first day, decaying to zero after 14 days
+      const accessBonus = Math.max(0, 0.5 - (daysSinceAccessed / 14) * 0.5);
+      score += accessBonus;
+    }
+
+    // 5. Bonus for top-level entities (not nested)
+    if (!entity.parent_entity_id) {
+      score += 0.5;
+    }
+
+    // 6. Special adjustments for certain entity characteristics
+
+    // Bonus for entities with a name that suggests importance
+    const importantNamePatterns = [
+      "main",
+      "index",
+      "core",
+      "app",
+      "server",
+      "controller",
+      "service",
+    ];
+    if (
+      entity.name &&
+      importantNamePatterns.some((pattern) =>
+        entity.name.toLowerCase().includes(pattern)
+      )
+    ) {
+      score += 0.5;
+    }
+
+    // Cap the score at 10
+    return Math.min(10.0, Math.max(0, score));
+  } catch (error) {
+    console.error(
+      `Error calculating importance score for entity ${entity.entity_id}:`,
+      error
+    );
+    return 1.0; // Default fallback score
+  }
+}
+
+/**
  * Score a context snippet based on multiple relevance factors
  *
  * @param {ContextSnippet} snippet - The context snippet to score

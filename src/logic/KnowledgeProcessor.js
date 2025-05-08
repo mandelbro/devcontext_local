@@ -52,8 +52,9 @@ export async function processCodeChange(change) {
     let contentHash;
     try {
       const crypto = await import("crypto");
+      // Use SHA-256 consistent with ContextIndexerLogic.js
       contentHash = crypto
-        .createHash("md5")
+        .createHash("sha256")
         .update(change.newContent)
         .digest("hex");
     } catch (hashError) {
