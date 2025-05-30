@@ -1,81 +1,125 @@
 /**
- * Logger utility module
- * Provides logging functionality with level-based filtering and optional DB persistence
+ * ApplicationLoggerService - Structured JSON logging to stderr with log level support
+ *
+ * This service provides logging functions that output structured JSON exclusively to process.stderr.
+ * It respects the LOG_LEVEL environment variable for filtering logs based on severity.
  */
 
-import { LOG_LEVEL, DB_LOGGING_ENABLED } from "../config.js";
-
-// Log level priorities (higher number = higher priority)
+// Log levels with numeric values for comparison
 const LOG_LEVELS = {
-  DEBUG: 0,
-  INFO: 1,
-  WARN: 2,
-  ERROR: 3,
+  debug: 0,
+  info: 1,
+  warn: 2,
+  error: 3,
 };
 
-// Multiple ways to detect MCP mode to be absolutely sure
-function isInMcpMode() {
-  return (
-    process.env.MCP_MODE === "true" ||
-    process.env.MCP_MODE === true ||
-    global.MCP_MODE === true
-  );
-}
-
-// MCP mode is set in main.js BEFORE any imports run
-// This ensures we detect it correctly
-const IN_MCP_MODE = isInMcpMode();
+// Get log level from environment or default to 'info'
+const getCurrentLogLevel = () => {
+  const logLevel = process.env.LOG_LEVEL?.toLowerCase() || "info";
+  return LOG_LEVELS[logLevel] !== undefined ? logLevel : "info";
+};
 
 /**
- * Logs a message with the specified level and optional data
- * @param {string} level - Log level ('DEBUG', 'INFO', 'WARN', 'ERROR')
- * @param {string} message - Log message
- * @param {object|null} data - Optional data to include with the log
+ * Check if a given log level should be logged based on the current log level setting
+ * @param {string} level - The log level to check
+ * @returns {boolean} - Whether the log should be output
  */
-export const logMessage = (level, message, data = null) => {
-  // Defense in depth: Triple-check MCP mode to be absolutely certain
-  // This is critical for MCP operation
-  if (isInMcpMode() || IN_MCP_MODE || process.env.MCP_MODE === "true") {
-    return;
-  }
-
-  // Convert level to uppercase for consistency
-  const upperLevel = level.toUpperCase();
-
-  // Only log if the message level is at or above the configured level
-  if (
-    !LOG_LEVELS.hasOwnProperty(upperLevel) ||
-    LOG_LEVELS[upperLevel] < LOG_LEVELS[LOG_LEVEL]
-  ) {
-    return;
-  }
-
-  // Create timestamp
-  const timestamp = new Date().toISOString();
-
-  // Normal mode - human readable format
-  // Format the log message
-  let logString = `[${timestamp}] [${upperLevel}]: ${message}`;
-  if (data) {
-    const dataString = typeof data === "string" ? data : JSON.stringify(data);
-    logString += ` - ${dataString}`;
-  }
-
-  // Final safety check before output
-  if (isInMcpMode() || IN_MCP_MODE || process.env.MCP_MODE === "true") {
-    return;
-  }
-
-  // Output to appropriate stream
-  if (upperLevel === "DEBUG" || upperLevel === "INFO") {
-    console.log(logString);
-  } else {
-    console.error(logString);
-  }
-
-  // Database logging would happen here, but we're avoiding circular dependency
-  // If DB_LOGGING_ENABLED is true, we would log to the database
-  // But since we need to avoid importing from db.js, we'll skip this part
+const shouldLog = (level) => {
+  const currentLevel = LOG_LEVELS[getCurrentLogLevel()];
+  const targetLevel = LOG_LEVELS[level];
+  return targetLevel >= currentLevel;
 };
 
-export default logMessage;
+/**
+ * Process message or error object to ensure proper serialization
+ * @param {string|Error} message - Message string or Error object
+ * @returns {Object} - Processed message object
+ */
+const processMessage = (message) => {
+  if (message instanceof Error) {
+    return {
+      message: message.message,
+      stack: message.stack,
+    };
+  }
+  return { message };
+};
+
+/**
+ * Process context object, handling Error objects specially
+ * @param {Object|Error|undefined} context - Optional context object
+ * @returns {Object|undefined} - Processed context
+ */
+const processContext = (context) => {
+  if (!context) return undefined;
+
+  if (context instanceof Error) {
+    return {
+      error: {
+        message: context.message,
+        stack: context.stack,
+      },
+    };
+  }
+
+  return context;
+};
+
+/**
+ * Core logging function
+ * @param {string} level - Log level
+ * @param {string|Error} message - Log message or Error object
+ * @param {Object} [context] - Optional context data
+ */
+const log = (level, message, context) => {
+  if (!shouldLog(level)) return;
+
+  const processedMessage = processMessage(message);
+  const processedContext = processContext(context);
+
+  const logObject = {
+    timestamp: new Date().toISOString(),
+    level,
+    ...processedMessage,
+    ...(processedContext ? { context: processedContext } : {}),
+  };
+
+  // Write to stderr as JSON with newline
+  process.stderr.write(JSON.stringify(logObject) + "\n");
+};
+
+/**
+ * Logger object with methods for different log levels
+ */
+const logger = {
+  /**
+   * Log debug message
+   * @param {string|Error} message - Debug message or Error
+   * @param {Object} [context] - Optional context
+   */
+  debug: (message, context) => log("debug", message, context),
+
+  /**
+   * Log informational message
+   * @param {string|Error} message - Info message or Error
+   * @param {Object} [context] - Optional context
+   */
+  info: (message, context) => log("info", message, context),
+
+  /**
+   * Log warning message
+   * @param {string|Error} message - Warning message or Error
+   * @param {Object} [context] - Optional context
+   */
+  warn: (message, context) => log("warn", message, context),
+
+  /**
+   * Log error message
+   * @param {string|Error} message - Error message or Error object
+   * @param {Object} [context] - Optional context
+   */
+  error: (message, context) => log("error", message, context),
+};
+
+// Export the logger instance
+export default logger;

@@ -1,42 +1,22 @@
-import esbuild from "esbuild";
-import { nodeExternalsPlugin } from "esbuild-node-externals";
+import * as esbuild from "esbuild";
 
-esbuild
-  .build({
-    entryPoints: ["src/main.js"],
-    bundle: true,
-    platform: "node",
-    target: "node18",
-    outfile: "dist/mcp-server.bundle.js",
-    format: "esm",
-    minify: true,
-    sourcemap: true,
-    plugins: [nodeExternalsPlugin()],
-    external: [
-      "@libsql/client",
-      "@modelcontextprotocol/sdk",
-      "acorn",
-      "uuid",
-      "zod",
-      "dotenv",
-      "fs",
-      "path",
-      "url",
-      "os",
-      "util",
-      "crypto",
-    ],
-    banner: {
-      js: '#!/usr/bin/env node\n"use strict";',
-    },
-    metafile: true,
-  })
-  .then((result) => {
-    // Report bundle size
-    const outputSize = Object.values(result.metafile.outputs)[0].bytes;
-    console.log(`Bundle size: ${(outputSize / 1024 / 1024).toFixed(2)} MB`);
-  })
-  .catch((error) => {
-    console.error("Build failed:", error);
-    process.exit(1);
-  });
+// Configuration for esbuild - simplified version according to Task 003
+const config = {
+  entryPoints: ["src/main.js"],
+  outfile: "dist/devcontext-server.js",
+  platform: "node",
+  format: "esm",
+  bundle: true,
+  target: "node18",
+  // Note: Minification and sourcemaps explicitly excluded per Task 003
+  // Tree-sitter grammar handling will be addressed in Story 6.1
+};
+
+// Run the build
+esbuild.build(config).catch((err) => {
+  console.error("Error building:", err);
+  process.exit(1);
+});
+
+// Export the configuration for potential reuse
+export default config;
