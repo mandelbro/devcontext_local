@@ -77,7 +77,7 @@
 
 - **Title**: Refactor client.js to use connection factory
 - **File**: src/db/client.js
-- **Complete**: [ ]
+- **Complete**: [x]
 
 #### Prompt:
 
