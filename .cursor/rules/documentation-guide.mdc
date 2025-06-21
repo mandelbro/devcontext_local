@@ -1,0 +1,241 @@
+---
+description:
+globs: */docs/*,*.txt,*.md
+alwaysApply: false
+---
+---
+title: Documentation Writing Guide
+description: Comprehensive guide for writing effective documentation with safety checks and incremental editing
+---
+
+# Documentation Writing Best Practices
+
+## PRE-FLIGHT SAFETY CHECKS
+
+### 1. File Existence Verification
+
+**For AI Assistant:** Before suggesting edits to any documentation file, FIRST confirm:
+- Does the file exist at the specified path?
+- If not, create it with proper directory structure
+- Start with a basic template if creating new files
+
+### 2. Incremental Editing Protocol
+**MANDATORY: Edit documentation in small, focused chunks to prevent errors:**
+
+- **Maximum change per edit:** 10-15 lines or one section at a time
+- **Always preview changes** before applying
+- **Test links and formatting** after each chunk
+- **Commit frequently** with descriptive messages
+
+## DOCUMENTATION STRUCTURE GUIDELINES
+
+### Essential Elements (in order):
+1. **Title/Header** - Clear, descriptive, action-oriented
+2. **Purpose Statement** - One sentence explaining why this doc exists
+3. **Quick Start/TL;DR** - Immediate value for busy readers
+4. **Table of Contents** - For docs >200 words
+5. **Main Content** - Organized in logical sections
+6. **Examples** - Concrete, working examples
+7. **Troubleshooting** - Common issues and solutions
+8. **References/Links** - External resources
+
+### Content Quality Standards
+
+#### Writing Style:
+- **Write for humans first, computers second**
+- Use active voice: "Run the command" not "The command should be run"
+- Start with simple use cases, progress to advanced
+- **One concept per paragraph**
+- Use concrete examples over abstract explanations
+
+#### Information Architecture:
+- **Lead with the most important information**
+- Group related information together
+- Use consistent heading hierarchy (H1 → H2 → H3)
+- **Meaningful names**: Make headings scannable and descriptive
+
+#### Maintenance Rules:
+- **Change docs in the same commit as code changes**
+- Remove outdated information immediately
+- **Better to have no doc than wrong doc**
+- Regular review cycles (monthly for critical docs)
+
+## FORMATTING STANDARDS
+
+### Headers:
+```markdown
+# Main Title (H1 - Only one per document)
+## Major Section (H2)
+### Subsection (H3)
+#### Details (H4 - use sparingly)
+```
+
+### Code Examples:
+```markdown
+# Always include language specification
+```bash
+# Shell commands with comments
+yarn install package-name
+```
+
+```python
+# Code examples with context
+def example_function():
+    """Clear docstring explaining purpose."""
+    return "meaningful_result"
+```
+
+### Lists and Structure:
+- Use bullet points for unordered items
+- Use numbered lists for sequential steps
+- **Bold** for emphasis on key concepts
+- `Code formatting` for file names, commands, variables
+
+### Links and References:
+```markdown
+# Internal links
+[Section Reference](mdc:Soren/Soren/Soren/Soren/Soren/Soren/Soren/Soren/#section-heading)
+
+# External links with descriptive text
+[Official Documentation](mdc:Soren/Soren/Soren/Soren/Soren/Soren/Soren/Soren/https:/example.com/docs)
+
+# Reference-style links for repeated URLs
+[Link Text][reference-id]
+
+[reference-id]: https://example.com/long-url
+```
+
+## TEMPLATES FOR COMMON DOCS
+
+### README.md Template:
+```markdown
+# Project Name
+
+Brief description of what this project does.
+
+## Quick Start
+
+```bash
+# Minimal example to get running
+git clone <repo>
+cd project
+yarn install
+yarn start
+```
+
+## Installation
+
+Detailed installation steps...
+
+## Usage
+
+Basic usage examples...
+
+## Contributing
+
+Link to CONTRIBUTING.md or brief guidelines...
+
+## License
+
+License information...
+```
+
+### API Documentation Template:
+```markdown
+## Method Name
+
+Brief description of what the method does.
+
+### Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| param1    | string | Yes | Description |
+
+### Returns
+
+Description of return value and type.
+
+### Example
+
+```language
+# Working code example
+```
+
+### Exceptions
+
+List of possible errors and when they occur.
+```
+
+## CONTENT VALIDATION CHECKLIST
+
+Before finalizing any documentation:
+
+### Accuracy Check:
+- [ ] All code examples tested and working
+- [ ] Links verified and functional
+- [ ] Version numbers current
+- [ ] Screenshots up-to-date (if applicable)
+
+### Usability Check:
+- [ ] Can a new user follow this successfully?
+- [ ] Are prerequisites clearly stated?
+- [ ] Is the simplest use case presented first?
+- [ ] Are complex topics broken into digestible chunks?
+
+### Technical Check:
+- [ ] Proper markdown formatting
+- [ ] Consistent heading hierarchy
+- [ ] Table of contents updated (if present)
+- [ ] Spelling and grammar checked
+
+## EDITING WORKFLOW
+
+### Step-by-Step Process:
+1. **Verify file exists** (create if needed)
+2. **Read entire document** to understand context
+3. **Identify specific section** to modify
+4. **Make small, focused changes** (≤15 lines)
+5. **Preview rendered output**
+6. **Test any code examples or links**
+7. **Commit with descriptive message**
+8. **Repeat for next section**
+
+### Error Prevention:
+- Always backup before major changes
+- Use diff tools to review changes
+- Test documentation on different devices/browsers
+- Have someone else review critical documentation
+
+## ANTI-PATTERNS TO AVOID
+
+❌ **Don't do these:**
+- Writing documentation after the fact
+- Using vague headings like "Miscellaneous" or "Other"
+- Creating documentation without examples
+- Forgetting to update docs when code changes
+- Writing for yourself instead of your audience
+- Including outdated or incorrect information
+- Making massive changes without testing
+
+✅ **Do these instead:**
+- Write docs alongside code development
+- Use descriptive, action-oriented headings
+- Include working code examples for every concept
+- Update docs in the same commit as code changes
+- Write for the least experienced valid user
+- Keep information current and accurate
+- Make incremental, tested changes
+
+## ACCESSIBILITY CONSIDERATIONS
+
+- Use descriptive link text (not "click here")
+- Provide alt text for images
+- Ensure proper heading hierarchy for screen readers
+- Test with keyboard navigation
+- Use sufficient color contrast for any visual elements
+- Provide text alternatives for audio/video content
+
+---
+
+**Remember:** Good documentation is like good code - it should be clear, maintainable, and serve its users effectively. When in doubt, prioritize clarity and usefulness over comprehensiveness.

@@ -1,0 +1,150 @@
+---
+description: Cursor File and Context Optimization Rule - Enforces the 500-line rule and optimal file structure for maximum AI agent effectiveness
+globs:
+alwaysApply: true
+---
+# Cursor File and Context Optimization Rule
+
+You are an AI agent working within Cursor IDE. Follow these critical optimization guidelines to ensure maximum effectiveness and avoid context limitations.
+
+## CORE FILE SIZE CONSTRAINTS
+
+### The 500-Line Rule (MANDATORY)
+- **Target**: Keep all files between 100-500 lines for optimal AI performance
+- **Hard Limits**:
+  - Standard mode: 250 lines maximum before performance degradation
+  - MAX mode: 750 lines maximum before "File is too long" errors
+  - **NEVER exceed 1,000 lines** without explicit architectural justification
+
+### File Size Performance Tiers
+1. **Optimal (100-200 lines)**: Full AI context awareness, best performance
+2. **Good (200-500 lines)**: Excellent performance with minor limitations
+3. **Degraded (500-750 lines)**: Reduced effectiveness, attention dilution
+4. **Problematic (750+ lines)**: Context overflow, outline-only mode, poor AI assistance
+
+## FILE STRUCTURE REQUIREMENTS
+
+### When Creating New Files
+- **Single Responsibility**: Each file should have ONE clear, focused purpose
+- **Logical Separation**: Split by functionality, not arbitrary line counts
+- **Modular Design**: Break complex classes into smaller, focused components
+- **Clear Naming**: Use descriptive names that indicate file purpose and relationships
+
+### When File Approaches 400 Lines
+1. **Evaluate for splitting opportunities**:
+   - Extract utility functions to separate files
+   - Move related classes to dedicated modules
+   - Separate concerns into logical boundaries
+   - Create index files for clean imports
+
+2. **Never split arbitrarily**: Maintain logical cohesion over strict line limits
+
+### When Encountering Large Legacy Files (1000+ lines)
+**Use the Two-Step Workaround**:
+1. Start conversation with: "Can you see this file?" (establishes context)
+2. Then paste full file content with your actual request
+3. This bypasses Cursor's outline-only limitation for large files
+
+## PROJECT ORGANIZATION STANDARDS
+
+### Required Directory Structure
+```
+src/
+├── components/     # Reusable UI components (100-300 lines each)
+├── pages/         # Top-level route components (200-400 lines each)
+├── utils/         # Helper functions (50-200 lines each)
+├── api/           # Service functions (100-300 lines each)
+├── types/         # Type definitions (50-200 lines each)
+├── hooks/         # Custom React hooks (50-150 lines each)
+└── constants/     # Configuration and constants (50-100 lines each)
+
+docs/
+├── architecture/  # Architectural decisions and patterns
+├── api/          # API documentation
+└── examples/     # Code examples and patterns
+```
+
+### File Naming Conventions
+- Use descriptive, searchable names
+- Include functionality hints: `userAuthService.ts`, `productListComponent.tsx`
+- Avoid generic names: `utils.ts`, `helpers.ts`, `common.ts`
+- Use consistent patterns across similar file types
+
+## CONTEXT MANAGEMENT OPTIMIZATION
+
+### Leverage Cursor's @ Symbol System
+- **@Files**: Reference specific files instead of including entire large files
+- **@Folders**: Include relevant directory contexts
+- **@Code**: Reference specific code snippets
+- **@Codebase**: Perform semantic searches across the project
+
+### Documentation Requirements
+- Include clear file headers describing purpose and relationships
+- Maintain comprehensive README files for complex modules
+- Document architectural decisions in dedicated docs/ folder
+- Use inline comments for complex logic (but keep files under 500 lines)
+
+## CODE GENERATION GUIDELINES
+
+### When Generating New Code
+1. **Always check target file size first**
+2. **If file > 400 lines**: Suggest refactoring before adding new code
+3. **Create new files** rather than extending large existing ones
+4. **Maintain consistency** with existing project patterns
+5. **Include proper imports** and module structure
+
+### When Modifying Existing Code
+1. **Assess file size impact** before making changes
+2. **Suggest extractions** when modifications would exceed limits
+3. **Maintain logical cohesion** when splitting files
+4. **Update related imports** and references
+
+## QUALITY ASSURANCE CHECKS
+
+### Before Completing Any Task
+- [ ] All new/modified files are under 500 lines
+- [ ] File purposes are clear and focused
+- [ ] Directory structure follows project conventions
+- [ ] Related files are properly linked/imported
+- [ ] Documentation is updated if needed
+- [ ] No arbitrary or illogical file splits
+
+### Performance Monitoring
+- Monitor AI response quality as file sizes increase
+- Suggest refactoring when experiencing context limitations
+- Use MAX mode for files between 500-750 lines when necessary
+- Flag any files approaching 1,000 lines for immediate refactoring
+
+## ANTI-PATTERNS TO AVOID
+
+### Never Do This
+- ❌ Create single files with multiple unrelated responsibilities
+- ❌ Exceed 750 lines without using the two-step workaround
+- ❌ Split files arbitrarily just to meet line counts
+- ❌ Use generic filenames like `utils.ts` or `helpers.ts`
+- ❌ Ignore context limitations when files become too large
+
+### Always Do This
+- ✅ Keep files focused on single responsibilities
+- ✅ Split logically when files approach 400 lines
+- ✅ Use descriptive, searchable filenames
+- ✅ Maintain clear project structure
+- ✅ Document architectural decisions
+
+## EMERGENCY PROCEDURES
+
+### When Forced to Work with Large Files
+1. **Acknowledge the limitation**: "This file exceeds optimal size limits"
+2. **Apply two-step workaround**: Start with context question, then provide full content
+3. **Suggest refactoring**: Provide specific splitting recommendations
+4. **Use MAX mode**: When available and file is under 750 lines
+
+### When Context Limits Are Hit
+1. **Stop current task**
+2. **Suggest file reorganization**
+3. **Provide specific refactoring steps**
+4. **Resume after optimization**
+
+---
+
+**Remember**: These constraints exist because of technical limitations in Cursor's context management system. Following these guidelines ensures optimal AI agent performance and maintainable codebases. The 500-line rule isn't arbitrary—it's based on measurable performance degradation patterns in the underlying AI models.

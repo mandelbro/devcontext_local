@@ -1,4 +1,9 @@
 ---
+description:
+globs:
+alwaysApply: true
+---
+---
 description: Task Workflow System for project implementation across multiple task files within the tasks/ directory.
 globs: **/*
 alwaysApply: true
@@ -96,14 +101,17 @@ alwaysApply: true
 ### 3. Updating Task Status (Critical)
 
 - After successfully implementing a task:
-  1. **Locate the task** within its specific `tasks/tasks-N.md` file (as identified in Step 1).
-  2. **Change its status:** Modify `Complete: [ ]` to `Complete: [x]` in that specific `tasks/tasks-N.md` file.
-  3. **Update the local summary within that `tasks/tasks-N.md` file (Optional but Recommended):**
+  1. **Run the tests** review the test files created for the task, run them, and resolve any test failures that you encounter.
+  2. **Optimize files sizes**: Review the @100-file-and-context-optimization.mdc rule to ensure the changes conform to the file and context optimization guidelines.
+  3. **Locate the task** within its specific `tasks/tasks-N.md` file (as identified in Step 1).
+  4. **Change its status:** Modify `Complete: [ ]` to `Complete: [x]` in that specific `tasks/tasks-N.md` file.
+  5. **Update the local summary within that `tasks/tasks-N.md` file (Optional but Recommended):**
      - If feasible, decrement "Pending" and increment "Complete" counts for _that file's specific summary_. This is secondary to updating the main index.
-  4. **Update the Overall Project Task Summary in `tasks/tasks-index.md`:**
+  6. **Update the Overall Project Task Summary in `tasks/tasks-index.md`:**
      - Decrement "Pending" by 1.
      - Increment "Complete" by 1.
-  5. **Save changes** to both the modified `tasks/tasks-N.md` file and `tasks/tasks-index.md`.
+  7. **Save changes** to both the modified `tasks/tasks-N.md` file and `tasks/tasks-index.md`.
+  8. **Commit your changes**: Use the Git MCP server to commit all the changes that are related to the task you just completed to the current branch, use the `Completed Task ID {ID}`, and provide a bulleted list of the completed acceptance criteria to the commit description, then push the changes to the remote server using `git push origin HEAD`.
   ```javascript
   // ✅ DO: Update "Complete: [ ]" to "Complete: [x]" in the correct `tasks/tasks-N.md` file.
   // ✅ DO: Update "Pending" and "Complete" counts in `tasks/tasks-index.md`.

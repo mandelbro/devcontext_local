@@ -1,0 +1,344 @@
+---
+description: Web Search Strategy Using Browser MCP and Fetch Tools
+globs: 
+alwaysApply: false
+---
+
+# Web Search Strategy with Browser MCP and Fetch Tools
+
+## Overview
+This rule provides comprehensive guidelines for agents to effectively search the web using browsermcp tools to navigate Google and the fetch tool to retrieve search result contents. The strategy emphasizes best practices for query construction, result evaluation, and knowledge retention.
+
+## When to Use Web Search
+
+### Primary Use Cases
+- Resolving specific technical errors or exceptions
+- Finding current documentation for APIs, frameworks, or libraries
+- Researching implementation patterns and best practices
+- Verifying current versions, compatibility, or recent changes
+- Finding examples of specific code patterns or configurations
+- Investigating industry standards or emerging practices
+
+### Search Triggers
+- When encountering unfamiliar error messages
+- When working with new or updated technologies
+- When implementation approaches are unclear
+- When existing codebase patterns need verification
+- When documentation seems outdated or incomplete
+
+## Google Search Best Practices
+
+### Query Construction Strategy
+
+#### For Technical Errors
+1. **Extract Core Error**: Remove environment-specific content
+   - Replace file paths: `/Users/username/project` → `project directory`
+   - Replace app names: `MyApp::Error` → `ApplicationName::Error`
+   - Replace specific versions: `v2.1.3` → `version 2.x` (unless version-specific)
+   - Remove personal identifiers: usernames, API keys, URLs
+
+2. **Structure Error Queries**:
+   ```
+   Format: "[Technology] [Error Type] [Core Message]"
+   Examples:
+   - "Rails ActionController ParameterMissing error"
+   - "React useEffect infinite loop dependency array"
+   - "TypeScript cannot find module declaration"
+   ```
+
+3. **Add Context Keywords**:
+   - Include framework/library name
+   - Add programming language
+   - Include relevant version if critical
+
+#### For Implementation Research
+1. **Pattern-Based Queries**:
+   ```
+   "how to [specific action] in [technology]"
+   "[technology] best practices for [use case]"
+   "[framework] [component/feature] implementation example"
+   ```
+
+2. **Comparison Queries**:
+   ```
+   "[technology A] vs [technology B] for [use case]"
+   "[implementation approach] pros and cons"
+   ```
+
+#### Query Refinement Strategies
+1. **Start Broad, Then Narrow**:
+   - Initial: "React form validation"
+   - Refined: "React Hook Form validation with TypeScript"
+   - Specific: "React Hook Form Zod schema validation patterns"
+
+2. **Use Quotation Marks** for exact phrases:
+   - `"cannot resolve module"` for exact error messages
+   - `"best practices"` to find authoritative guides
+
+3. **Add Site Restrictions** when appropriate:
+   - `site:stackoverflow.com` for community solutions
+   - `site:github.com` for code examples
+   - `site:docs.domain.com` for official documentation
+
+### Advanced Search Operators
+- `filetype:md` - Find documentation files
+- `intitle:"error"` - Focus on error-related content
+- `inurl:docs` - Prioritize documentation
+- `-tutorial` - Exclude basic tutorials when seeking advanced content
+- `after:2023` - Find recent content
+
+## Browser MCP Navigation Strategy
+
+### Step 1: Navigate to Google
+```javascript
+// Navigate to Google search
+await mcp_browsermcp_browser_navigate({
+  url: "https://www.google.com"
+});
+
+// Take snapshot to see page structure
+await mcp_browsermcp_browser_snapshot();
+```
+
+### Step 2: Perform Search
+```javascript
+// Find search input and enter query
+await mcp_browsermcp_browser_type({
+  element: "Google search input",
+  ref: "[search input reference from snapshot]",
+  text: "constructed search query",
+  submit: true
+});
+
+// Wait for results to load
+await mcp_browsermcp_browser_wait({ time: 2 });
+
+// Capture search results
+await mcp_browsermcp_browser_snapshot();
+```
+
+### Step 3: Evaluate Results
+- Prioritize official documentation
+- Look for Stack Overflow with high vote counts
+- Prefer recent dates (last 2-3 years for technical content)
+- Check GitHub repositories with good star counts
+- Avoid commercial/promotional content for technical research
+
+### Step 4: Navigate to Selected Results
+```javascript
+// Click on promising result
+await mcp_browsermcp_browser_click({
+  element: "search result link",
+  ref: "[link reference from snapshot]"
+});
+
+// Wait for page load
+await mcp_browsermcp_browser_wait({ time: 3 });
+```
+
+## Content Retrieval with Fetch Tool
+
+### Fetching Search Results
+```javascript
+// Get content from selected page
+await mcp_fetch_fetch({
+  url: "extracted URL from browser navigation",
+  max_length: 5000,
+  raw: false  // Get markdown-converted content
+});
+```
+
+### Content Evaluation Criteria
+1. **Relevance Score** (1-10):
+   - Direct answer to query: 8-10
+   - Partial solution: 5-7
+   - Background information: 3-4
+   - Unrelated: 1-2
+
+2. **Authority Assessment**:
+   - Official documentation: High authority
+   - Established community sites: Medium-high authority
+   - Personal blogs with expertise: Medium authority
+   - Marketing content: Low authority
+
+3. **Recency Check**:
+   - Technical content: Prefer last 2 years
+   - Framework-specific: Check against current version
+   - General principles: Age less critical
+
+### Multiple Source Strategy
+1. **Primary Source**: Official documentation or authoritative guide
+2. **Community Source**: Stack Overflow or GitHub issues
+3. **Example Source**: Working code repository or tutorial
+4. **Validation Source**: Additional confirmation or alternative approach
+
+## Error Handling and Retry Logic
+
+### Search Result Quality Issues
+```javascript
+// If initial search yields poor results
+if (lowQualityResults) {
+  // Refine query with more specific terms
+  // Try alternative search operators
+  // Search for related concepts
+}
+```
+
+### Navigation Failures
+```javascript
+// Handle page load failures
+try {
+  await mcp_browsermcp_browser_navigate({ url });
+  await mcp_browsermcp_browser_wait({ time: 3 });
+} catch (error) {
+  // Try alternative sources
+  // Modify search strategy
+  // Use fetch tool directly if URL is known
+}
+```
+
+### Content Extraction Issues
+```javascript
+// If fetch fails or returns insufficient content
+if (contentInadequate) {
+  // Try raw: true for better HTML access
+  // Adjust max_length parameter
+  // Try different sections of the page
+  // Look for alternative sources
+}
+```
+
+## Memory Integration Strategy
+
+### Store Successful Search Strategies
+```javascript
+// Remember effective query patterns
+await mcp_memory_create_entities({
+  entities: [{
+    name: "effective_search_strategy",
+    entityType: "SearchPattern",
+    observations: [
+      "For [error_type], use query pattern: '[technology] [specific_error] solution'",
+      "Include version information when compatibility issues suspected",
+      "Site:stackoverflow.com effective for [specific_technology] problems"
+    ]
+  }]
+});
+```
+
+### Track Solution Sources
+```javascript
+// Remember reliable sources for different types of problems
+await mcp_memory_create_entities({
+  entities: [{
+    name: "reliable_tech_sources",
+    entityType: "KnowledgeSource",
+    observations: [
+      "docs.framework.com - comprehensive API documentation",
+      "github.com/project/issues - known bugs and workarounds",
+      "specific-blog.com - advanced implementation patterns"
+    ]
+  }]
+});
+```
+
+### Document Error Resolution Patterns
+```javascript
+// Save successful error resolution approaches
+await mcp_memory_create_relations({
+  relations: [{
+    from: "specific_error_pattern",
+    to: "solution_approach",
+    relationType: "resolved_by"
+  }]
+});
+
+await mcp_memory_add_observations({
+  observations: [{
+    entityName: "error_resolution_history",
+    contents: [
+      "Error: [sanitized_error_message]",
+      "Search query: [effective_query]",
+      "Solution source: [url_domain]",
+      "Resolution approach: [solution_summary]",
+      "Time to resolution: [duration]"
+    ]
+  }]
+});
+```
+
+## Quality Assurance Checklist
+
+### Before Starting Search
+- [ ] Query contains no personal/sensitive information
+- [ ] Error message is properly sanitized
+- [ ] Search terms are specific enough to be actionable
+- [ ] Context keywords are included
+
+### During Search Process
+- [ ] Multiple result sources evaluated
+- [ ] Official documentation prioritized
+- [ ] Content recency checked
+- [ ] Authority of sources assessed
+
+### After Content Retrieval
+- [ ] Solution relevance confirmed
+- [ ] Implementation approach validated
+- [ ] Successful strategies documented in memory
+- [ ] Alternative approaches noted for future reference
+
+## Performance Optimization
+
+### Efficient Search Patterns
+1. **Parallel Investigation**: Use multiple browser sessions for different angles
+2. **Cached Results**: Check memory for similar previous searches
+3. **Progressive Refinement**: Start broad, narrow based on initial results
+4. **Source Prioritization**: Begin with most likely authoritative sources
+
+### Resource Management
+- Limit search depth to prevent excessive browsing
+- Use fetch tool for quick content checks
+- Prioritize text-based sources over media-heavy pages
+- Set reasonable timeouts for page loads
+
+## Common Pitfalls to Avoid
+
+### Query Construction Errors
+- Including sensitive file paths or credentials
+- Using overly specific version numbers when unnecessary
+- Omitting crucial context (programming language, framework)
+- Creating queries too broad to be actionable
+
+### Source Selection Issues
+- Relying solely on first search result
+- Ignoring publication dates for time-sensitive content
+- Choosing commercial content over technical documentation
+- Not cross-referencing solutions across multiple sources
+
+### Memory Management Failures
+- Not documenting successful search strategies
+- Failing to note resolution approaches for future reference
+- Missing connections between error patterns and solutions
+- Not updating knowledge based on new findings
+
+## Integration with Development Workflow
+
+### Before Implementation
+1. Search for existing solutions and patterns
+2. Verify current best practices
+3. Check for known issues or limitations
+4. Document findings in memory
+
+### During Problem-Solving
+1. Search for specific error messages (sanitized)
+2. Look for similar implementation examples
+3. Verify proposed solutions against multiple sources
+4. Test and validate approaches
+
+### After Resolution
+1. Document successful search queries and sources
+2. Note resolution approach in memory
+3. Create searchable patterns for future reference
+4. Update knowledge base with new insights
+
+This comprehensive web search strategy ensures effective use of browser MCP and fetch tools while building a knowledge base for continuous improvement in problem-solving capabilities.
