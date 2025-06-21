@@ -28,6 +28,19 @@ const validateLogLevel = (level) => {
 };
 
 /**
+ * Validates the DATABASE_MODE environment variable
+ * @param {string} mode - The database mode to validate
+ * @returns {string} - Valid database mode or default 'turso'
+ */
+const validateDatabaseMode = (mode) => {
+  const validModes = ["turso", "local"];
+  if (mode && validModes.includes(mode.toLowerCase())) {
+    return mode.toLowerCase();
+  }
+  return "turso"; // Default to turso for backward compatibility
+};
+
+/**
  * Parses the TREE_SITTER_LANGUAGES environment variable
  * @param {string} languages - Comma-separated list of languages
  * @returns {string[]} - Array of language names
@@ -133,6 +146,10 @@ const config = {
   // TursoDB connection settings
   TURSO_DATABASE_URL: process.env.TURSO_DATABASE_URL,
   TURSO_AUTH_TOKEN: process.env.TURSO_AUTH_TOKEN,
+
+  // Database mode configuration
+  DATABASE_MODE: validateDatabaseMode(process.env.DATABASE_MODE),
+  LOCAL_SQLITE_PATH: process.env.LOCAL_SQLITE_PATH || './devcontext.db',
 
   // Project path settings
   PROJECT_PATH: projectPathInfo.path,
@@ -340,8 +357,10 @@ export const RANKING_FACTOR_WEIGHTS = {
 // Log configuration (excluding sensitive information)
 logger.info("Configuration loaded", {
   LOG_LEVEL: config.LOG_LEVEL,
+  DATABASE_MODE: config.DATABASE_MODE,
   TURSO_DATABASE_URL: config.TURSO_DATABASE_URL ? "(set)" : "(not set)",
   TURSO_AUTH_TOKEN: config.TURSO_AUTH_TOKEN ? "(set)" : "(not set)",
+  LOCAL_SQLITE_PATH: config.DATABASE_MODE === 'local' ? config.LOCAL_SQLITE_PATH : "(not used)",
   MAX_TEXT_FILE_SIZE_MB: config.MAX_TEXT_FILE_SIZE_MB,
   MAX_TEXT_FILE_SIZE: config.MAX_TEXT_FILE_SIZE,
   TREE_SITTER_LANGUAGES: config.TREE_SITTER_LANGUAGES,
@@ -377,6 +396,8 @@ logger.info(`PROJECT_PATH resolved to: ${config.PROJECT_PATH}`, {
 // Log sensitive information only at debug level
 if (config.LOG_LEVEL === "debug") {
   logger.debug("Debug configuration details", {
+    DATABASE_MODE: config.DATABASE_MODE,
+    LOCAL_SQLITE_PATH: config.LOCAL_SQLITE_PATH,
     TURSO_DATABASE_URL: config.TURSO_DATABASE_URL,
     // Still don't log the actual token value, just indicate if it exists
     TURSO_AUTH_TOKEN_SET: Boolean(config.TURSO_AUTH_TOKEN),
