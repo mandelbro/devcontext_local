@@ -173,7 +173,7 @@
 
 - **Title**: Update .env.example with new configuration options
 - **File**: .env.example
-- **Complete**: [ ]
+- **Complete**: [x]
 
 #### Prompt:
 
