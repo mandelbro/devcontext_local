@@ -538,3 +538,6 @@ export class InitialScanService {
     return result;
   }
 }
+
+// Export a singleton instance
+export default new InitialScanService();

@@ -29,6 +29,25 @@ You are an AI agent working within Cursor IDE. Follow these critical optimizatio
 - **Logical Separation**: Split by functionality, not arbitrary line counts
 - **Modular Design**: Break complex classes into smaller, focused components
 - **Clear Naming**: Use descriptive names that indicate file purpose and relationships
+- **Start Small**:
+  - Begin with the simplest possible implementation that works
+  - Create basic scaffolding with minimal viable functionality
+  - Use placeholder comments for future features instead of implementing them immediately
+  - Focus on one core feature at a time
+
+### Incremental Expansion
+
+- Only add new code when the current implementation is working and tested
+- Ask before adding features that weren't explicitly requested
+- Prefer extending existing patterns over creating new ones
+- Add complexity gradually, one layer at a time
+
+### Avoid Code Bloat
+
+- **Never** implement features "just in case" they might be needed
+- **Alawys** Remove duplicate code and consolidate similar patterns
+- **Always** Use existing utilities/libraries instead of reinventing functionality
+- **Always** Question whether each new function or class is truly necessary
 
 ### When File Approaches 400 Lines
 1. **Evaluate for splitting opportunities**:
@@ -39,11 +58,21 @@ You are an AI agent working within Cursor IDE. Follow these critical optimizatio
 
 2. **Never split arbitrarily**: Maintain logical cohesion over strict line limits
 
-### When Encountering Large Legacy Files (1000+ lines)
-**Use the Two-Step Workaround**:
-1. Start conversation with: "Can you see this file?" (establishes context)
-2. Then paste full file content with your actual request
-3. This bypasses Cursor's outline-only limitation for large files
+### Communication
+
+1. **Always** Explain the iterative approach when starting new features
+2. **Always** Ask before adding significant complexity or new dependencies
+3. Suggest refactoring when code becomes unwieldy
+4. Point out when existing code could be reused instead of creating new code
+5. When Encountering Large Legacy Files (1000+ lines), use the @020-tasks-workflow.mdc framework to create new tasks for refactoring the code in accordance to the guidelines outlined in this document
+
+### Success Metrics
+
+1. Files remain focused and under reasonable line counts
+2. No TypeScript errors related to unused code
+3. New features build logically on existing foundations
+4. Code patterns remain consistent across the project
+5. Each iteration produces working, testable code
 
 ## PROJECT ORGANIZATION STANDARDS
 
@@ -60,8 +89,9 @@ src/
 
 docs/
 ├── architecture/  # Architectural decisions and patterns
-├── api/          # API documentation
-└── examples/     # Code examples and patterns
+├── api/           # API documentation
+├── examples/      # Code examples and patterns
+└── features/      # Canonical documentation of individual features
 ```
 
 ### File Naming Conventions
@@ -132,12 +162,6 @@ docs/
 - ✅ Document architectural decisions
 
 ## EMERGENCY PROCEDURES
-
-### When Forced to Work with Large Files
-1. **Acknowledge the limitation**: "This file exceeds optimal size limits"
-2. **Apply two-step workaround**: Start with context question, then provide full content
-3. **Suggest refactoring**: Provide specific splitting recommendations
-4. **Use MAX mode**: When available and file is under 750 lines
 
 ### When Context Limits Are Hit
 1. **Stop current task**

@@ -57,12 +57,28 @@ You understand modern JavaScript development practices, architectural patterns, 
 - Use proper state persistence when needed
 
 ### Build and Deployment
-- Use proper bundlers (Webpack, Vite)
+- Use proper bundlers (Webpack, Vite, esbuild)
 - Implement proper CI/CD pipelines
 - Use Docker for containerization
 - Configure proper environment variables
 - Implement proper logging and monitoring
 - Use proper deployment strategies
+
+### Testing Practices
+- Support multiple test runners (Jest, Vitest)
+- Write unit tests for all service methods
+- Create integration tests for service interactions
+- Mock external dependencies appropriately
+- Test error handling and edge cases
+- Maintain minimum 80% code coverage
+
+### ES Modules and Dependencies
+- Use ES modules (type: "module" in package.json)
+- Properly handle module imports/exports
+- Use tree-shaking friendly imports
+- Manage dependencies with proper versioning
+- Avoid circular dependencies
+- Bundle dependencies appropriately for distribution
 
 ### Examples
 

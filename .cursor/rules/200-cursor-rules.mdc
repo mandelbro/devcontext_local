@@ -57,3 +57,14 @@ alwaysApply: true
   - Include both DO and DON'T examples
   - Reference actual code over theoretical examples
   - Use consistent formatting across rules
+
+- **Available Rules:**
+  - [core.mdc](mdc:.cursor/rules/core.mdc) - Core development principles
+  - [javascript-coding.mdc](mdc:.cursor/rules/javascript-coding.mdc) - JavaScript coding standards
+  - [devcontext-practices.mdc](mdc:.cursor/rules/devcontext-practices.mdc) - DevContext-specific practices
+  - [100-file-and-context-optimization.mdc](mdc:.cursor/rules/100-file-and-context-optimization.mdc) - File size optimization
+  - [020-tasks-workflow.mdc](mdc:.cursor/rules/020-tasks-workflow.mdc) - Task management workflow
+  - [010-documentation-context.mdc](mdc:.cursor/rules/010-documentation-context.mdc) - Documentation requirements
+  - [web-search-strategy.mdc](mdc:.cursor/rules/web-search-strategy.mdc) - Web search strategies
+  - [documentation-guide.mdc](mdc:.cursor/rules/documentation-guide.mdc) - Documentation standards
+  - [senior-developer.mdc](mdc:.cursor/rules/senior-developer.mdc) - Senior developer practices

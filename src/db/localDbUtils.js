@@ -139,8 +139,9 @@ export const createBackup = async (dbPath) => {
     const filename = path.basename(absolutePath, path.extname(absolutePath));
     const extension = path.extname(absolutePath);
 
-    // Create timestamp for backup filename
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+    // Create timestamp for backup filename with milliseconds to ensure uniqueness
+    const now = new Date();
+    const timestamp = now.toISOString().replace(/[:.]/g, '-');
     const backupFilename = `${filename}_backup_${timestamp}${extension}`;
     const backupPath = path.join(directory, backupFilename);
 

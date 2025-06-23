@@ -1,0 +1,246 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+# DevContext Development Practices
+
+## Service Development Guidelines
+
+- **Service Isolation**
+  - Each service must have a single, well-defined responsibility
+  - Services communicate through explicit interfaces only
+  - Avoid circular dependencies between services
+  - Use dependency injection for service instantiation
+
+- **Error Handling Standards**
+  ```javascript
+  // ✅ DO: Use consistent error handling
+  try {
+    const result = await operation();
+    return result;
+  } catch (error) {
+    logger.error('Operation failed', {
+      error,
+      service: 'ServiceName',
+      operation: 'operationName',
+      context: relevantContext
+    });
+    throw new ServiceError(
+      'Human-readable error message',
+      'ERROR_CODE',
+      { originalError: error, context }
+    );
+  }
+
+  // ❌ DON'T: Swallow errors or use generic messages
+  ```
+
+- **Async/Await Patterns**
+  - Always use async/await for asynchronous operations
+  - Never mix callbacks with promises
+  - Handle promise rejections properly
+  - Use Promise.all() for parallel operations
+
+## Database Access Patterns
+
+- **Query Optimization**
+  ```javascript
+  // ✅ DO: Use prepared statements and batch operations
+  const stmt = db.prepare(`
+    INSERT INTO code_entities (id, type, name, path)
+    VALUES (?, ?, ?, ?)
+  `);
+
+  const insertMany = db.transaction((entities) => {
+    for (const entity of entities) {
+      stmt.run(entity.id, entity.type, entity.name, entity.path);
+    }
+  });
+
+  // ❌ DON'T: Execute queries in loops without transactions
+  ```
+
+- **Schema Migrations**
+  - Always version database schema changes
+  - Migrations must be idempotent
+  - Test migrations with production-like data
+  - Include rollback procedures
+
+## MCP Handler Implementation
+
+- **Parameter Validation**
+  ```javascript
+  // ✅ DO: Validate all inputs with Zod schemas
+  const schema = z.object({
+    conversationId: z.string().uuid(),
+    query: z.string().min(1).max(1000),
+    constraints: z.object({
+      filePaths: z.array(z.string()).optional(),
+      entityTypes: z.array(z.string()).optional()
+    }).optional()
+  });
+
+  const validated = schema.parse(params);
+
+  // ❌ DON'T: Trust input without validation
+  ```
+
+- **Response Consistency**
+  - All handlers must return consistent response structures
+  - Include appropriate metadata in responses
+  - Handle partial failures gracefully
+  - Provide actionable error messages
+
+## Performance Optimization
+
+- **Caching Strategy**
+  - Cache frequently accessed entities in memory
+  - Implement cache invalidation on updates
+  - Use LRU eviction for memory management
+  - Monitor cache hit rates
+
+- **Index Management**
+  ```javascript
+  // ✅ DO: Update indexes incrementally
+  async updateFileIndex(filePath, changes) {
+    const affectedEntities = await this.getAffectedEntities(filePath);
+    await this.updateEntities(affectedEntities, changes);
+    await this.updateKeywordIndex(affectedEntities);
+  }
+
+  // ❌ DON'T: Rebuild entire index on every change
+  ```
+
+## Testing Requirements
+
+- **Test Coverage**
+  - Minimum 80% code coverage for services
+  - Unit tests for all public methods
+  - Integration tests for service interactions
+  - End-to-end tests for MCP handlers
+
+- **Mock Strategies**
+  ```javascript
+  // ✅ DO: Create reusable test utilities
+  class MockDatabaseClient {
+    constructor() {
+      this.data = new Map();
+    }
+
+    prepare(query) {
+      return {
+        run: jest.fn(),
+        get: jest.fn(),
+        all: jest.fn()
+      };
+    }
+  }
+
+  // Use in tests
+  const mockDb = new MockDatabaseClient();
+  const service = new IndexingService({ db: mockDb });
+  ```
+
+## Code Organization
+
+- **File Structure**
+  - Keep service files under 500 lines
+  - Extract complex logic into utility functions
+  - Group related functionality into modules
+  - Use clear, descriptive file names
+
+- **Import Organization**
+  ```javascript
+  // ✅ DO: Organize imports logically
+  // External dependencies
+  import { z } from 'zod';
+  import { v4 as uuidv4 } from 'uuid';
+
+  // Internal services
+  import { AIService } from './services/ai.service.js';
+  import { CompressionService } from './services/compression.service.js';
+
+  // Utilities and helpers
+  import { logger } from './utils/logger.js';
+  import { ServiceError } from './utils/errors.js';
+
+  // ❌ DON'T: Mix import types randomly
+  ```
+
+## Security Practices
+
+- **Input Sanitization**
+  - Always validate and sanitize user input
+  - Use parameterized queries for SQL
+  - Escape special characters in regex patterns
+  - Validate file paths to prevent directory traversal
+
+- **Credential Management**
+  - Never hardcode credentials
+  - Use environment variables for sensitive data
+  - Validate required environment variables on startup
+  - Log credential issues without exposing values
+
+## Documentation Standards
+
+- **Code Documentation**
+  ```javascript
+  // ✅ DO: Document complex logic and public APIs
+  /**
+   * Retrieves relevant context based on query and constraints.
+   *
+   * @param {string} conversationId - Active conversation ID
+   * @param {string} query - Search query
+   * @param {Object} constraints - Optional search constraints
+   * @returns {Promise<Array>} Relevant context chunks
+   * @throws {ServiceError} If retrieval fails
+   */
+  async retrieveContext(conversationId, query, constraints = {}) {
+    // Implementation
+  }
+
+  // ❌ DON'T: Over-document obvious code
+  ```
+
+- **Architecture Documentation**
+  - Keep architecture docs in sync with code
+  - Document significant design decisions
+  - Include diagrams for complex flows
+  - Update docs when refactoring
+
+## Monitoring and Logging
+
+- **Structured Logging**
+  ```javascript
+  // ✅ DO: Use structured, contextual logging
+  logger.info('Context retrieval completed', {
+    conversationId,
+    queryLength: query.length,
+    resultCount: results.length,
+    duration: Date.now() - startTime,
+    strategy: weightingStrategy
+  });
+
+  // ❌ DON'T: Use unstructured console.log
+  ```
+
+- **Performance Metrics**
+  - Log operation durations
+  - Track resource usage
+  - Monitor error rates
+  - Measure query performance
+
+## Deployment Considerations
+
+- **Bundle Optimization**
+  - Use esbuild for production bundles
+  - Exclude unnecessary files from bundle
+  - Include source maps for debugging
+  - Test bundle in isolation
+
+- **Environment Configuration**
+  - Support multiple deployment environments
+  - Validate configuration on startup
+  - Provide sensible defaults
+  - Document all environment variables

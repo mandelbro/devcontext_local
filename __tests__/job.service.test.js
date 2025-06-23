@@ -1,11 +1,9 @@
 // __tests__/job.service.test.js
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { BackgroundJobManager } from "../src/services/job.service.js";
-import * as dbQueries from "../src/db/queries.js";
 import {
   createMockDbClient,
   createMockAIService,
-  createMockConfig,
 } from "../test/utils/test-helpers.js";
 
 // Mock external modules
@@ -14,12 +12,19 @@ vi.mock("../src/db/client.js", () => ({
 }));
 
 vi.mock("../src/db/queries.js", () => ({
-  fetchPendingAiJobs: vi.fn(),
-  updateAiJobStatusAndAttempts: vi.fn(),
-  // Add other query functions as needed
+  fetchPendingAiJobs: vi.fn().mockResolvedValue([]),
+  updateAiJobStatusAndAttempts: vi.fn().mockResolvedValue({}),
+  updateEntityAiStatusForJobTarget: vi.fn().mockResolvedValue({}),
 }));
 
-vi.mock("../src/config.js", () => createMockConfig());
+vi.mock("../src/config.js", () => ({
+  default: {
+    AI_JOB_CONCURRENCY: 2,
+    AI_JOB_DELAY_MS: 500,
+    MAX_AI_JOB_ATTEMPTS: 3,
+    AI_JOB_POLLING_INTERVAL_MS: 5000,
+  },
+}));
 
 vi.mock("../src/utils/logger.js", () => ({
   debug: vi.fn(),
@@ -38,7 +43,7 @@ describe("BackgroundJobManager", () => {
   let jobManager;
   let mockAIService;
 
-  beforeEach(() => {
+    beforeEach(() => {
     // Reset mocks
     vi.clearAllMocks();
 
@@ -70,25 +75,15 @@ describe("BackgroundJobManager", () => {
     expect(jobManager.activeJobsCount).toBe(0);
   });
 
-  test("initializes with custom configuration from config", async () => {
-    // Mock config values
-    const mockConfig = createMockConfig({
-      AI_JOB_CONCURRENCY: 3,
-      AI_JOB_DELAY_MS: 2000,
-      MAX_AI_JOB_ATTEMPTS: 5,
-    });
-
-    // Apply mock config to the job manager
-    jobManager.configService = mockConfig;
-
-    // Initialize and start with options
+  test("initializes with configuration from config module", async () => {
+    // Initialize
     await jobManager.initialize();
     jobManager.start();
 
-    // Verify configuration was applied
-    expect(jobManager.concurrency).toBe(3);
-    expect(jobManager.jobDelayMs).toBe(2000);
-    expect(jobManager.maxAiJobAttempts).toBe(5);
+    // Verify configuration was applied from mocked config
+    expect(jobManager.concurrency).toBe(2); // From mocked config
+    expect(jobManager.jobDelayMs).toBe(500); // From mocked config
+    expect(jobManager.maxAiJobAttempts).toBe(3); // From mocked config
     expect(jobManager.isRunning).toBe(true);
 
     // Clean up

@@ -123,11 +123,14 @@ describe("Database Client Integration Tests", () => {
       delete process.env.TURSO_DATABASE_URL;
       delete process.env.TURSO_AUTH_TOKEN;
 
-      // Need to re-import modules to pick up new env values
-      const { default: freshConfig } = await import("../../src/config.js");
+      // Need to clear the module cache and re-import to pick up new env values
+      vi.resetModules();
+
+      // Re-import the modules
+      const { default: initializeDbClientFresh } = await import("../../src/db/client.js");
 
       // Execute & Verify
-      expect(() => initializeDbClient()).toThrow(
+      expect(() => initializeDbClientFresh()).toThrow(
         "TURSO_DATABASE_URL is required for 'turso' mode"
       );
     });
@@ -137,14 +140,21 @@ describe("Database Client Integration Tests", () => {
     test("should fail with helpful error for invalid database mode", async () => {
       // Setup: Configure with invalid mode
       process.env.DATABASE_MODE = "invalid";
+      delete process.env.TURSO_DATABASE_URL;
+      delete process.env.TURSO_AUTH_TOKEN;
 
-      // Need to re-import modules to pick up new env values
-      const { default: freshConfig } = await import("../../src/config.js");
+      // Need to clear the module cache and re-import to pick up new env values
+      vi.resetModules();
+
+      // Re-import the modules
+      const { default: initializeDbClientFresh } = await import("../../src/db/client.js");
 
       // Execute & Verify
       // Note: The config validates and defaults to 'turso' for invalid modes
       // So if Turso credentials aren't set, it will fail asking for them
-      expect(() => initializeDbClient()).toThrow();
+      expect(() => initializeDbClientFresh()).toThrow(
+        "TURSO_DATABASE_URL is required for 'turso' mode"
+      );
     });
   });
 
@@ -170,10 +180,10 @@ describe("Database Client Integration Tests", () => {
       `);
 
       // 2. Insert data
-      await client.execute(
-        "INSERT INTO test_table (name) VALUES (?)",
-        ["test_name"]
-      );
+      await client.execute({
+        sql: "INSERT INTO test_table (name) VALUES (?)",
+        args: ["test_name"]
+      });
 
       // 3. Query data
       const result = await client.execute("SELECT * FROM test_table");

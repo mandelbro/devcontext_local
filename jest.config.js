@@ -15,10 +15,19 @@ export default {
   ],
 
   // The glob patterns Jest uses to detect test files
-  testMatch: ["**/test/**/*.test.js", "**/test/**/*.spec.js"],
+  testMatch: [
+    "**/__tests__/**/*.test.js",
+    "**/__tests__/**/*.spec.js",
+    "**/test/**/*.test.js",
+    "**/test/**/*.spec.js"
+  ],
 
   // Files to ignore
-  testPathIgnorePatterns: ["/node_modules/", "/dist/"],
+  testPathIgnorePatterns: [
+    "/node_modules/",
+    "/dist/",
+    "\\.manual\\.test\\.js$", // Exclude manual test files
+  ],
 
   // Setup files that run before each test file
   setupFilesAfterEnv: ["<rootDir>/test/setup.js"],

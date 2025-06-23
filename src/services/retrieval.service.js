@@ -3259,8 +3259,9 @@ class RetrievalService {
             }
           }
 
-          // Convert the map back to an array
-          candidateSnippets = Array.from(candidateSnippetsMap.values());
+          // Convert the map back to an array and update candidateSnippets
+          candidateSnippets.length = 0; // Clear the array
+          candidateSnippets.push(...Array.from(candidateSnippetsMap.values()));
 
           this.logger.info(
             "Relationship-derived snippets merged successfully",
@@ -4483,84 +4484,6 @@ class RetrievalService {
     }
   }
 
-  /**
-   * Analyzes score distribution across all candidate snippets for debugging and tuning
-   * @param {Array<Object>} candidateSnippets - Array of candidate snippet objects
-   * @private
-   */
-  _analyzeScoreDistribution(candidateSnippets) {
-    if (!candidateSnippets || candidateSnippets.length === 0) {
-      return;
-    }
-
-    try {
-      // Group scores by source type for analysis
-      const scoresBySource = {};
-      let allScores = [];
-
-      for (const snippet of candidateSnippets) {
-        const sourceType = snippet.sourceType;
-        const score = snippet.initialScore;
-
-        if (typeof score === "number" && !isNaN(score)) {
-          if (!scoresBySource[sourceType]) {
-            scoresBySource[sourceType] = [];
-          }
-          scoresBySource[sourceType].push(score);
-          allScores.push(score);
-        }
-      }
-
-      // Calculate distribution statistics
-      const calculateStats = (scores) => {
-        if (scores.length === 0) return null;
-
-        const sorted = [...scores].sort((a, b) => a - b);
-        return {
-          count: scores.length,
-          min: sorted[0],
-          max: sorted[sorted.length - 1],
-          avg: scores.reduce((sum, s) => sum + s, 0) / scores.length,
-          median: sorted[Math.floor(sorted.length / 2)],
-        };
-      };
-
-      // Log overall distribution
-      const overallStats = calculateStats(allScores);
-      this.logger.debug("Overall score distribution analysis", {
-        totalSnippets: candidateSnippets.length,
-        scoredSnippets: allScores.length,
-        stats: overallStats,
-      });
-
-      // Log per-source distribution
-      for (const [sourceType, scores] of Object.entries(scoresBySource)) {
-        const sourceStats = calculateStats(scores);
-        this.logger.debug(`Score distribution for ${sourceType}`, {
-          sourceType: sourceType,
-          stats: sourceStats,
-        });
-      }
-
-      // Log potential normalization concerns
-      if (overallStats && overallStats.max - overallStats.min > 0.8) {
-        this.logger.debug(
-          "Wide score range detected - normalization effectiveness confirmed",
-          {
-            scoreRange: overallStats.max - overallStats.min,
-            minScore: overallStats.min,
-            maxScore: overallStats.max,
-          }
-        );
-      }
-    } catch (error) {
-      this.logger.error("Error during score distribution analysis", {
-        error: error.message,
-        stack: error.stack,
-        candidateSnippetsCount: candidateSnippets.length,
-      });
-    }
-  }
 }
 
 export default RetrievalService;

@@ -97,6 +97,7 @@ alwaysApply: true
   // ✅ DO: Focus implementation *only* on the file specified in the task's "File:" field.
   // ✅ DO: Follow the detailed instructions, context, and references within the task's "Prompt:" section.
   ```
+- **Use context7 for most up-to-date documentation and code samples when necessary**
 
 ### 3. Updating Task Status (Critical)
 

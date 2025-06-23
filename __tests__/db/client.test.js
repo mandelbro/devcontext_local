@@ -53,8 +53,8 @@ describe("Database Client", () => {
 
       // Verify
       expect(connectionFactory.createDatabaseClient).toHaveBeenCalledTimes(1);
-      expect(logger.default.info).toHaveBeenCalledWith("Initializing database client");
-      expect(logger.default.info).toHaveBeenCalledWith("Database client initialized successfully");
+      expect(logger.info).toHaveBeenCalledWith("Initializing database client");
+      expect(logger.info).toHaveBeenCalledWith("Database client initialized successfully");
       expect(result).toBe(mockClient);
     });
 
@@ -68,14 +68,14 @@ describe("Database Client", () => {
       // Execute & Verify
       expect(() => initializeDbClient()).toThrow("Failed to create database client");
       expect(connectionFactory.createDatabaseClient).toHaveBeenCalledTimes(1);
-      expect(logger.default.info).toHaveBeenCalledWith("Initializing database client");
-      expect(logger.default.error).toHaveBeenCalledWith(
+      expect(logger.info).toHaveBeenCalledWith("Initializing database client");
+      expect(logger.error).toHaveBeenCalledWith(
         "Failed to initialize database client",
         { error: testError }
       );
     });
 
-    test("should maintain backward compatibility with existing code", () => {
+    test("should maintain backward compatibility with existing code", async () => {
       // Setup: Factory returns mock client
       connectionFactory.createDatabaseClient.mockReturnValue(mockClient);
 
@@ -83,14 +83,14 @@ describe("Database Client", () => {
       const clientFromNamedExport = initializeDbClient();
 
       // Import default export dynamically
-      import("../../src/db/client.js").then((module) => {
-        const clientFromDefaultExport = module.default();
+      const module = await import("../../src/db/client.js");
+      const clientFromDefaultExport = module.default();
 
-        // Verify both exports return the same type of result
-        expect(typeof clientFromNamedExport).toBe("object");
-        expect(typeof clientFromDefaultExport).toBe("object");
-        expect(clientFromNamedExport).toHaveProperty("execute");
-      });
+      // Verify both exports return the same type of result
+      expect(typeof clientFromNamedExport).toBe("object");
+      expect(typeof clientFromDefaultExport).toBe("object");
+      expect(clientFromNamedExport).toHaveProperty("execute");
+      expect(clientFromDefaultExport).toHaveProperty("execute");
     });
 
     test("should not include any database mode specific logic", () => {
@@ -136,11 +136,11 @@ describe("Database Client", () => {
       initializeDbClient();
 
       // Verify: Proper logging sequence
-      expect(logger.default.info.mock.calls).toEqual([
+      expect(logger.info.mock.calls).toEqual([
         ["Initializing database client"],
         ["Database client initialized successfully"]
       ]);
-      expect(logger.default.error).not.toHaveBeenCalled();
+      expect(logger.error).not.toHaveBeenCalled();
     });
   });
 
@@ -173,7 +173,7 @@ describe("Database Client", () => {
 
         // Execute & Verify
         expect(() => initializeDbClient()).toThrow(message);
-        expect(logger.default.error).toHaveBeenCalledWith(
+        expect(logger.error).toHaveBeenCalledWith(
           "Failed to initialize database client",
           { error }
         );

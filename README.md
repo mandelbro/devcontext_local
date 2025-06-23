@@ -93,6 +93,86 @@ Create or edit `.cursor/mcp.json` in your project directory:
 
 Replace `your-turso-database-url` and `your-turso-auth-token` with the values obtained in Step 1.
 
+## Running Tests
+
+DevContext includes a comprehensive test suite using Vitest. Tests cover core functionality including database operations, service integration, and parser functionality.
+
+### Test Commands
+
+```bash
+# Run all tests (uses Vitest)
+npm test
+
+# Run tests in watch mode for development
+npm run test:watch
+
+# Run tests with coverage report (requires @vitest/coverage-v8 installation)
+npm run test:coverage
+
+# Run tests with UI interface
+npm run test:ui
+
+# Run specific test for Gemini API integration
+npm run test:gemini
+```
+
+**Note**: The coverage report functionality requires installing a compatible version of `@vitest/coverage-v8` that matches the Vitest version. Due to version conflicts with other dependencies, this may require resolving dependency issues first.
+
+### Alternative Test Runner (Jest)
+
+While the tests are primarily written for Vitest, Jest configuration is also included. However, due to compatibility issues between Vitest and Jest test syntax, Jest tests may not run properly. We recommend using Vitest for all testing needs.
+
+### Test Structure
+
+Tests are organized in the following directories:
+
+- `__tests__/`: Main test directory
+  - `db/`: Database-related tests
+  - Service tests (e.g., `job.service.test.js`)
+- `src/services/parsing/`: Parser-specific tests
+  - `javascriptParser.test.js`
+  - `pythonParser.test.js`
+  - `typescriptParser.test.js`
+
+### Running Specific Tests
+
+To run specific test files or patterns:
+
+```bash
+# Run a specific test file with Vitest
+npx vitest run __tests__/job.service.test.js
+
+# Run tests matching a pattern
+npx vitest run --grep "parser"
+
+# Run only database tests
+npx vitest run __tests__/db/
+```
+
+### Coverage Reports
+
+After running tests with coverage, reports are generated in:
+
+- `coverage/lcov-report/index.html` - Open in browser for detailed coverage
+- Console output shows summary statistics
+
+### Test Environment Setup
+
+Tests require:
+
+- Node.js 18+ (same as runtime requirement)
+- No additional database setup (tests use in-memory SQLite)
+- Environment variables are mocked during tests
+
+### Writing Tests
+
+When contributing, ensure:
+
+- New features include corresponding tests
+- Tests follow existing patterns in the codebase
+- Coverage remains above 70% threshold
+- Tests are isolated and don't depend on external services
+
 ## Cursor Rules Implementation
 
 DevContext implements a sophisticated set of Cursor Rules that create an autonomous development environment. These rules guide Cursor's AI assistants in maintaining project scope alignment, incorporating up-to-date documentation, and implementing advanced task workflows.
@@ -188,6 +268,13 @@ Below is a complete example of an `mcp.json` file that configures both DevContex
   - [Context Management](#context-management)
   - [Pattern Recognition](#pattern-recognition)
   - [Intent & Relevance Analysis](#intent--relevance-analysis)
+- [Running Tests](#running-tests)
+  - [Test Commands](#test-commands)
+  - [Test Structure](#test-structure)
+  - [Running Specific Tests](#running-specific-tests)
+  - [Coverage Reports](#coverage-reports)
+  - [Test Environment Setup](#test-environment-setup)
+  - [Writing Tests](#writing-tests)
 - [MCP Tools](#mcp-tools)
   - [initialize_conversation_context](#initialize_conversation_context)
   - [update_conversation_context](#update_conversation_context)
