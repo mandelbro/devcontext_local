@@ -8,6 +8,7 @@
 import { createClient } from "@libsql/client";
 import config from "../config.js";
 import logger from "../utils/logger.js";
+import path from "path";
 
 /**
  * Creates a database client based on the configured DATABASE_MODE
@@ -19,13 +20,22 @@ export const createDatabaseClient = () => {
 
   logger.info(`Creating database client in '${DATABASE_MODE}' mode`);
 
+  // Validate DATABASE_MODE
+  const validModes = ['turso', 'local'];
+  if (!validModes.includes(DATABASE_MODE)) {
+    const errorMsg = DATABASE_MODE
+      ? `Invalid DATABASE_MODE: '${DATABASE_MODE}'. Must be either 'turso' or 'local'.`
+      : `DATABASE_MODE is not set. Please set DATABASE_MODE to either 'turso' or 'local' in your environment variables.`;
+
+    logger.error(errorMsg);
+    throw new Error(errorMsg + '\n\nFor quick start, use: DATABASE_MODE=local');
+  }
+
   try {
     if (DATABASE_MODE === 'turso') {
       return createTursoClient();
     } else if (DATABASE_MODE === 'local') {
       return createLocalSQLiteClient();
-    } else {
-      throw new Error(`Invalid DATABASE_MODE: ${DATABASE_MODE}. Must be 'turso' or 'local'`);
     }
   } catch (error) {
     logger.error(`Failed to create database client in '${DATABASE_MODE}' mode`, {
@@ -48,10 +58,30 @@ const createTursoClient = () => {
 
   // Validate Turso configuration
   if (!TURSO_DATABASE_URL) {
-    throw new Error(
-      "TURSO_DATABASE_URL is required for 'turso' mode but not provided. " +
-      "Please set TURSO_DATABASE_URL in your environment or switch to 'local' mode by setting DATABASE_MODE=local"
-    );
+    const errorMsg =
+      "TURSO_DATABASE_URL is required for 'turso' mode but not provided.\n\n" +
+      "To fix this, you can either:\n" +
+      "1. Set TURSO_DATABASE_URL in your environment variables\n" +
+      "2. Switch to local mode by setting DATABASE_MODE=local\n\n" +
+      "For local mode, use these environment variables:\n" +
+      "  DATABASE_MODE=local\n" +
+      "  LOCAL_SQLITE_PATH=./devcontext.db";
+
+    logger.error("Missing Turso database URL");
+    throw new Error(errorMsg);
+  }
+
+  // Validate URL format
+  if (!TURSO_DATABASE_URL.startsWith('libsql://') && !TURSO_DATABASE_URL.startsWith('http')) {
+    const errorMsg =
+      `Invalid TURSO_DATABASE_URL format: ${TURSO_DATABASE_URL}\n\n` +
+      "Turso URLs should start with 'libsql://' or 'https://'\n" +
+      "Example: libsql://your-database.turso.io\n\n" +
+      "If you don't have a Turso account, switch to local mode:\n" +
+      "  DATABASE_MODE=local";
+
+    logger.error("Invalid Turso URL format");
+    throw new Error(errorMsg);
   }
 
   // Create client configuration
@@ -64,7 +94,12 @@ const createTursoClient = () => {
     clientConfig.authToken = TURSO_AUTH_TOKEN;
     logger.debug("Including auth token in Turso client configuration");
   } else {
-    logger.warn("No TURSO_AUTH_TOKEN provided. This may cause authentication issues with Turso cloud.");
+    logger.warn(
+      "No TURSO_AUTH_TOKEN provided. This may cause authentication issues with Turso cloud.\n" +
+      "If you experience connection errors, either:\n" +
+      "1. Set TURSO_AUTH_TOKEN in your environment\n" +
+      "2. Switch to local mode with DATABASE_MODE=local"
+    );
   }
 
   // Create and validate the client
@@ -88,13 +123,30 @@ const createLocalSQLiteClient = () => {
 
   // Validate local database path
   if (!LOCAL_SQLITE_PATH) {
-    throw new Error("LOCAL_SQLITE_PATH is required for 'local' mode but not provided");
+    const errorMsg =
+      "LOCAL_SQLITE_PATH is required for 'local' mode but not provided.\n\n" +
+      "Please set LOCAL_SQLITE_PATH in your environment variables.\n" +
+      "Example: LOCAL_SQLITE_PATH=./devcontext.db";
+
+    logger.error("Missing local SQLite path");
+    throw new Error(errorMsg);
+  }
+
+  // Resolve the path to get absolute path
+  const resolvedPath = path.resolve(LOCAL_SQLITE_PATH);
+
+  // Warn if using absolute path
+  if (path.isAbsolute(LOCAL_SQLITE_PATH)) {
+    logger.warn(
+      `Using absolute path for database: ${LOCAL_SQLITE_PATH}\n` +
+      "Consider using a relative path for better portability."
+    );
   }
 
   // Ensure the path starts with 'file:' protocol for local SQLite
   const dbUrl = LOCAL_SQLITE_PATH.startsWith('file:')
     ? LOCAL_SQLITE_PATH
-    : `file:${LOCAL_SQLITE_PATH}`;
+    : `file:${resolvedPath}`;
 
   // Create client configuration for local SQLite
   const clientConfig = {
@@ -105,6 +157,7 @@ const createLocalSQLiteClient = () => {
   const client = createClient(clientConfig);
   logger.info("Local SQLite database client created successfully", {
     path: LOCAL_SQLITE_PATH,
+    resolvedPath: resolvedPath,
     url: dbUrl
   });
 

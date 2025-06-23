@@ -32,9 +32,24 @@ The server operates with a database instance dedicated to a single project, elim
 
 - Node.js 18.0.0 or higher
 - Cursor IDE with MCP support
-- TursoDB account (for database)
+- TursoDB account (optional - for cloud database)
+  - Alternatively, you can use local SQLite mode without any cloud account
 
-### Step 1: Set up TursoDB Database
+### Option A: Local SQLite Setup (Recommended for Quick Start)
+
+1. **No external accounts required** - DevContext will automatically create a local SQLite database file
+
+2. **Configure environment variables**:
+
+   Create a `.env` file in your project root:
+   ```bash
+   DATABASE_MODE=local
+   LOCAL_SQLITE_PATH=./devcontext.db
+   ```
+
+3. **That's it!** The database file will be created automatically when you first run DevContext.
+
+### Option B: Turso Cloud Setup (For Advanced Features)
 
 1. **Sign up for TursoDB**:
 
@@ -71,9 +86,11 @@ The server operates with a database instance dedicated to a single project, elim
 
    Save both the URL and token for the next step.
 
-### Step 2: Configure MCP in Cursor (can be applied to other IDE's as well)
+### Step 2: Configure MCP in Cursor
 
-Create or edit `.cursor/mcp.json` in your project directory:
+Create or edit `.cursor/mcp.json` in your project directory.
+
+**For Local SQLite Mode:**
 
 ```json
 {
@@ -83,6 +100,25 @@ Create or edit `.cursor/mcp.json` in your project directory:
       "args": ["-y", "devcontext@latest"],
       "enabled": true,
       "env": {
+        "DATABASE_MODE": "local",
+        "LOCAL_SQLITE_PATH": "./devcontext.db"
+      }
+    }
+  }
+}
+```
+
+**For Turso Cloud Mode:**
+
+```json
+{
+  "mcpServers": {
+    "devcontext": {
+      "command": "npx",
+      "args": ["-y", "devcontext@latest"],
+      "enabled": true,
+      "env": {
+        "DATABASE_MODE": "turso",
         "TURSO_DATABASE_URL": "your-turso-database-url",
         "TURSO_AUTH_TOKEN": "your-turso-auth-token"
       }
@@ -91,7 +127,7 @@ Create or edit `.cursor/mcp.json` in your project directory:
 }
 ```
 
-Replace `your-turso-database-url` and `your-turso-auth-token` with the values obtained in Step 1.
+Replace `your-turso-database-url` and `your-turso-auth-token` with the values obtained in Option B setup.
 
 ## Running Tests
 
@@ -231,8 +267,9 @@ Download or copy and paste the .cursor/rules directory into your project. Next, 
 
 ## Configuration Example
 
-Below is a complete example of an `mcp.json` file that configures both DevContext and Context7 MCP servers:
+Below are complete examples of `mcp.json` files for both database modes:
 
+**Local SQLite Mode with Context7:**
 ```json
 {
   "mcpServers": {
@@ -241,6 +278,28 @@ Below is a complete example of an `mcp.json` file that configures both DevContex
       "args": ["-y", "devcontext@latest"],
       "enabled": true,
       "env": {
+        "DATABASE_MODE": "local",
+        "LOCAL_SQLITE_PATH": "./devcontext.db"
+      }
+    },
+    "context7": {
+      "command": "npx",
+      "args": ["-y", "@upstash/context7-mcp@latest"]
+    }
+  }
+}
+```
+
+**Turso Cloud Mode with Context7:**
+```json
+{
+  "mcpServers": {
+    "devcontext": {
+      "command": "npx",
+      "args": ["-y", "devcontext@latest"],
+      "enabled": true,
+      "env": {
+        "DATABASE_MODE": "turso",
         "TURSO_DATABASE_URL": "libsql://your-project-db-name.turso.io",
         "TURSO_AUTH_TOKEN": "your_turso_auth_token_here"
       }
@@ -255,10 +314,12 @@ Below is a complete example of an `mcp.json` file that configures both DevContex
 
 ### Important Parameters
 
-| Parameter            | Description                      | Default Value   |
-| -------------------- | -------------------------------- | --------------- |
-| `TURSO_DATABASE_URL` | URL of your TursoDB instance     | None (Required) |
-| `TURSO_AUTH_TOKEN`   | Authentication token for TursoDB | None (Required) |
+| Parameter            | Description                                          | Default Value     | Required For |
+| -------------------- | ---------------------------------------------------- | ----------------- | ------------ |
+| `DATABASE_MODE`      | Database mode: 'local' or 'turso'                   | 'turso'           | Both modes   |
+| `LOCAL_SQLITE_PATH`  | Path to local SQLite database file                  | './devcontext.db' | Local mode   |
+| `TURSO_DATABASE_URL` | URL of your TursoDB instance                        | None              | Turso mode   |
+| `TURSO_AUTH_TOKEN`   | Authentication token for TursoDB                    | None              | Turso mode   |
 
 ## Table of Contents
 
@@ -466,6 +527,14 @@ Common issues and solutions:
 - **Missing Context**: Check token budget; increase if necessary
 - **Tool Errors**: Ensure proper conversation ID is being passed between tools
 - **Performance Issues**: Consider reducing scope of indexed files or increasing cache size
+
+### Local SQLite Mode Issues:
+
+- **Database File Permission Errors**: Ensure the directory for LOCAL_SQLITE_PATH is writable
+- **Database Locked Errors**: Close other connections to the database file
+- **Path Not Found**: Verify LOCAL_SQLITE_PATH directory exists or can be created
+- **Database Mode Not Working**: Check DATABASE_MODE is set to exactly 'local' (case-sensitive)
+- **Migration Errors**: Delete the local database file to start fresh if schema issues occur
 
 ## License
 
