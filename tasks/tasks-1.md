@@ -108,7 +108,7 @@
 
 - **Title**: Update main.js database initialization for local mode
 - **File**: src/main.js
-- **Complete**: [ ]
+- **Complete**: [x]
 
 #### Prompt:
 

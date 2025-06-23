@@ -5,7 +5,7 @@
  * connects to the database, and sets up the MCP server.
  */
 
-import { McpServer } from "@modelcontextprotocol/sdk";
+import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { z } from "zod";
 import config from "./config.js";
 import logger from "./utils/logger.js";
@@ -28,6 +28,7 @@ import { BackgroundJobManager } from "./services/job.service.js";
 import RetrievalService from "./services/retrieval.service.js";
 import CompressionService from "./services/compression.service.js";
 import RelationshipManager from "./services/relationship.service.js";
+import { ensureDbFileExists } from "./db/localDbUtils.js";
 
 /**
  * Start the server
@@ -60,21 +61,50 @@ async function startServer() {
     // Initialize database client
     const dbClient = initializeDbClient();
 
+    // Handle local SQLite database file creation if needed
+    if (config.DATABASE_MODE === 'local') {
+      try {
+        logger.info("Checking local SQLite database file...");
+        await ensureDbFileExists(config.LOCAL_SQLITE_PATH);
+        logger.info("Local SQLite database file ready");
+      } catch (fileError) {
+        // This is a critical error - log and exit with non-zero status code
+        logger.error("Critical error: Failed to ensure local SQLite database file", {
+          error: fileError.message,
+          stack: fileError.stack,
+          databasePath: config.LOCAL_SQLITE_PATH
+        });
+
+        // Exit the process with a non-zero status code
+        process.exit(1);
+      }
+    }
+
     // Verify database connection with a simple query
     try {
-      logger.info("Verifying TursoDB connection...");
+      const modeDescription = config.DATABASE_MODE === 'turso' ? 'TursoDB' : 'Local SQLite';
+      logger.info(`Verifying ${modeDescription} connection...`);
       await dbClient.execute("SELECT 1");
-      logger.info("TursoDB connection verified successfully");
+      logger.info(`${modeDescription} connection verified successfully`);
     } catch (dbError) {
       // This is a critical error - log and exit with non-zero status code
-      logger.error("Critical error: Failed to connect to TursoDB", {
+      const modeDescription = config.DATABASE_MODE === 'turso' ? 'TursoDB' : 'Local SQLite';
+      const errorDetails = {
         error: dbError.message,
         stack: dbError.stack,
-        databaseUrl: config.TURSO_DATABASE_URL ? "(set)" : "(not set)",
-        authToken: config.TURSO_AUTH_TOKEN
+        mode: config.DATABASE_MODE
+      };
+
+      if (config.DATABASE_MODE === 'turso') {
+        errorDetails.databaseUrl = config.TURSO_DATABASE_URL ? "(set)" : "(not set)";
+        errorDetails.authToken = config.TURSO_AUTH_TOKEN
           ? "(auth token provided)"
-          : "(no auth token)",
-      });
+          : "(no auth token)";
+      } else {
+        errorDetails.databasePath = config.LOCAL_SQLITE_PATH;
+      }
+
+      logger.error(`Critical error: Failed to connect to ${modeDescription}`, errorDetails);
 
       // Exit the process with a non-zero status code
       process.exit(1);
@@ -181,10 +211,9 @@ async function startServer() {
       logger.info("Initializing MCP server...");
 
       // Create the MCP server instance
-      const mcpServer = new McpServer({
+      const mcpServer = new Server({
         name: "DevContext MCP Server",
         version: config.VERSION || "1.0.0",
-        logger: logger,
       });
 
       // Create mcpContext for handlers that need database access
